@@ -96,27 +96,33 @@ Carefully read this receipt image, even if the print is faded, thermal-printed, 
 
 Extract all details into a clean JSON structure:
 {
-  "merchantName": "Nama tempat / restoran / kafe",
+  "merchantName": "Nama tempat / restoran / kafe (e.g. Ottera Cafe)",
+  "address": "Alamat lengkap jika tertera di struk (e.g. Jl. Senopati No. 88, Kebayoran Baru, Jakarta Selatan)",
   "transactionDate": "YYYY-MM-DD",
+  "transactionTime": "HH:mm (e.g. 19:42)",
+  "category": "Kafe",
+  "subCategory": "Makan & Minum",
   "items": [
     {
-      "itemName": "Nama menu / item",
+      "itemName": "Nama menu / item (e.g. Latte)",
       "quantity": 1,
-      "unitPrice": 50000,
-      "lineTotal": 50000
+      "unitPrice": 45000,
+      "lineTotal": 45000,
+      "category": "Minuman" // Choose 'Makanan', 'Minuman', or 'Lainnya'
     }
   ],
-  "subtotal": 100000,
-  "tax": 10000,
-  "serviceCharge": 5000,
-  "grandTotal": 115000,
+  "subtotal": 210000,
+  "tax": 21000,
+  "serviceCharge": 10500,
+  "grandTotal": 241500,
   "rawText": "Ringkasan teks struk yang terbaca",
   "confidence": 98
 }
 
 Strict requirements:
 1. Numbers must be pure integers or floats, no 'Rp', '.', or ',' in numerical fields.
-2. Return ONLY raw valid JSON without markdown code fences (\`\`\`json).`;
+2. Categorize each item as 'Makanan' (food, pasta, snack, rice, meat, dessert) or 'Minuman' (coffee, tea, latte, mineral water, juice, beverage).
+3. Return ONLY raw valid JSON without markdown code fences (\`\`\`json).`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -167,14 +173,28 @@ Strict requirements:
 
       return {
         merchantName: parsed.merchantName || null,
+        address: parsed.address || null,
         transactionDate: parsed.transactionDate || null,
+        transactionTime: parsed.transactionTime || null,
+        category: parsed.category || 'Kafe',
+        subCategory: parsed.subCategory || 'Makan & Minum',
         items: Array.isArray(parsed.items)
-          ? parsed.items.map((it: any) => ({
-              name: String(it.name || it.itemName || 'Item'),
-              quantity: Number(it.quantity) || 1,
-              unitPrice: it.unitPrice !== undefined ? Number(it.unitPrice) : Number(it.lineTotal || 0),
-              lineTotal: Number(it.lineTotal || 0),
-            }))
+          ? parsed.items.map((it: any) => {
+              const catLower = String(it.category || '').toLowerCase();
+              const isDrink =
+                catLower.includes('minum') ||
+                catLower.includes('drink') ||
+                /latte|coffee|kopi|tea|teh|water|juice|espresso|cappuccino|beer|wine|soda|boba/i.test(
+                  String(it.name || it.itemName || ''),
+                );
+              return {
+                name: String(it.name || it.itemName || 'Item'),
+                quantity: Number(it.quantity) || 1,
+                unitPrice: it.unitPrice !== undefined ? Number(it.unitPrice) : Number(it.lineTotal || 0),
+                lineTotal: Number(it.lineTotal || 0),
+                category: (isDrink ? 'Minuman' : 'Makanan') as 'Makanan' | 'Minuman',
+              };
+            })
           : [],
         subtotal: parsed.subtotal !== undefined ? Number(parsed.subtotal) : null,
         tax: parsed.tax !== undefined ? Number(parsed.tax) : null,
@@ -305,11 +325,13 @@ Strict requirements:
         }
 
         if (rawItemName.length >= 2 && !headerNoise.test(rawItemName) && priceNum > 0 && priceNum < 100000000) {
+          const isDrink = /latte|coffee|kopi|tea|teh|water|juice|espresso|cappuccino|beer|wine|soda|boba/i.test(rawItemName);
           items.push({
             name: rawItemName,
             quantity: isNaN(qty) || qty === 0 ? 1 : qty,
             unitPrice: Math.round(priceNum / (isNaN(qty) || qty === 0 ? 1 : qty)),
             lineTotal: priceNum,
+            category: (isDrink ? 'Minuman' : 'Makanan') as 'Makanan' | 'Minuman',
           });
         }
       }
@@ -337,7 +359,11 @@ Strict requirements:
     return {
       rawText,
       merchantName: merchantName ?? null,
+      address: null,
       transactionDate: transactionDate ?? null,
+      transactionTime: null,
+      category: 'Kafe',
+      subCategory: 'Makan & Minum',
       items,
       subtotal: subtotal ?? (calculatedSum > 0 ? calculatedSum : null),
       tax: tax ?? null,

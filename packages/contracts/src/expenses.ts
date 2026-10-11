@@ -56,12 +56,18 @@ export interface OcrReceiptItemDto {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  category?: 'Makanan' | 'Minuman' | 'Lainnya';
 }
 
 export interface OcrReceiptResultDto {
   rawText: string;
   merchantName: string | null;
+  address?: string | null;
   transactionDate: string | null;
+  transactionTime?: string | null;
+  category?: string | null;
+  subCategory?: string | null;
+  imageUrl?: string | null;
   items: OcrReceiptItemDto[];
   subtotal: number | null;
   tax: number | null;
