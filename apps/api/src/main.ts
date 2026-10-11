@@ -35,20 +35,12 @@ async function bootstrap() {
     });
   });
 
-  // CORS configuration (supports Expo Web preview deployments, localhost, and custom domains with credentials)
+  // CORS configuration (supports Expo Web preview deployments, mobile, and custom domains)
   app.enableCors({
-    origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      callback(null, true);
-    },
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Correlation-ID',
-      'X-Requested-With',
-      'Accept',
-    ],
+    allowedHeaders: '*',
   });
 
   // Global validation pipe

@@ -146,16 +146,19 @@ class ApiClient {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers,
-      credentials: 'include',
+      credentials: 'same-origin',
     });
 
     const json = await response.json().catch(() => null);
 
     if (!response.ok) {
-      const errorMsg =
-        json?.error?.message ||
-        json?.message ||
-        `Request failed with status ${response.status}`;
+      let errorMsg = json?.error?.message || json?.message;
+      if (Array.isArray(json?.error?.details) && json.error.details.length > 0) {
+        errorMsg = json.error.details.join('. ');
+      }
+      if (!errorMsg) {
+        errorMsg = `Request failed with status ${response.status}`;
+      }
       const errorCode = json?.error?.code || 'API_ERROR';
       throw new ApiError(response.status, errorCode, errorMsg, json?.error?.details);
     }

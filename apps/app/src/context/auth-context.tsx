@@ -10,6 +10,7 @@ import {
   ArchivedSpaceMetadata,
   CreateInvitationResponse,
   InvitationMetadata,
+  ResendVerificationResponse,
   SpaceDetails,
   UserMeResponse,
 } from '@ours/contracts';
@@ -34,7 +35,7 @@ interface AuthContextValue {
   login: (email: string, pass: string) => Promise<void>;
   register: (email: string, pass: string, name?: string) => Promise<void>;
   verifyEmail: (code: string) => Promise<void>;
-  resendVerification: () => Promise<void>;
+  resendVerification: () => Promise<ResendVerificationResponse>;
   logout: () => Promise<void>;
   createSpace: (name?: string, anniversaryDate?: string) => Promise<void>;
   generateInvitation: () => Promise<CreateInvitationResponse>;
@@ -62,13 +63,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const refresh = useCallback(async () => {
     try {
-      if (Platform.OS !== 'web') {
-        const token = await api.getStoredToken();
-        if (!token) {
-          setUser(null);
-          setCoupleSpace(null);
-          return;
-        }
+      const token = await api.getStoredToken();
+      if (!token) {
+        setUser(null);
+        setCoupleSpace(null);
+        return;
       }
 
       const userData = await api.users.getMe();
@@ -119,13 +118,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(true);
     setError(null);
     try {
-      await api.auth.register({
+      const regRes = await api.auth.register({
         email,
         password: pass,
         displayName: name || 'Partner',
       });
       // Automatically log in after registration
       await api.auth.login({ email, password: pass });
+
+      // Automatically verify email if verification token was provided (mock/dev environment)
+      if (regRes.verificationToken) {
+        try {
+          await api.auth.verifyEmail({ token: regRes.verificationToken });
+        } catch {
+          // If auto-verify fails, continue to let user verify manually
+        }
+      }
+
       await refresh();
     } catch (err: any) {
       setError(err?.message || 'Registration failed');
@@ -149,10 +158,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const resendVerification = async () => {
+  const resendVerification = async (): Promise<ResendVerificationResponse> => {
     setError(null);
     try {
-      await api.auth.resendVerification();
+      const res = await api.auth.resendVerification();
+      return res;
     } catch (err: any) {
       setError(err?.message || 'Failed to resend code');
       throw err;

@@ -38,6 +38,11 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      setErrorMessage('Kata sandi harus mengandung minimal 1 huruf besar, 1 huruf kecil, dan 1 angka.');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setErrorMessage('Konfirmasi kata sandi tidak cocok.');
       return;
@@ -48,7 +53,7 @@ export default function RegisterScreen() {
 
     try {
       await register(email.trim(), password, displayName.trim() || undefined);
-      router.replace('/(auth)/verify-email');
+      router.replace('/');
     } catch (err: any) {
       setErrorMessage(err?.message || 'Pendaftaran gagal. Silakan coba lagi.');
     } finally {
@@ -106,7 +111,7 @@ export default function RegisterScreen() {
 
           <Input
             label="Kata Sandi"
-            placeholder="Minimal 8 karakter"
+            placeholder="Min 8 karakter (huruf besar, kecil, angka)"
             value={password}
             onChangeText={(text) => {
               setPassword(text);

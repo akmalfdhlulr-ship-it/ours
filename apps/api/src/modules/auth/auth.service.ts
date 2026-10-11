@@ -95,6 +95,7 @@ export class AuthService {
           avatarUrl: user.profile?.avatarUrl ?? null,
         },
       },
+      verificationToken,
     };
   }
 
@@ -161,7 +162,7 @@ export class AuthService {
       text: `Your new verification token is: ${verificationToken}`,
     });
 
-    return { message: 'Verification email dispatched' };
+    return { message: 'Verification email dispatched', verificationToken };
   }
 
   async login(

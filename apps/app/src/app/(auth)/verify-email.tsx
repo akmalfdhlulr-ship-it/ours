@@ -50,8 +50,13 @@ export default function VerifyEmailScreen() {
     setErrorMessage(null);
     setResending(true);
     try {
-      await resendVerification();
-      setInfoMessage('Kode verifikasi baru telah dikirimkan ke email Anda.');
+      const res = await resendVerification();
+      if (res?.verificationToken) {
+        setCode(res.verificationToken);
+        setInfoMessage('Token verifikasi berhasil diterima & terisi otomatis. Silakan tekan tombol verifikasi.');
+      } else {
+        setInfoMessage('Kode verifikasi baru telah dikirimkan ke email Anda.');
+      }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Gagal mengirim ulang kode. Silakan coba sesaat lagi.');
     } finally {

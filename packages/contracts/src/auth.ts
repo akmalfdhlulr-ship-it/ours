@@ -16,6 +16,7 @@ export interface UserSummary {
 
 export interface RegisterResponse {
   user: UserSummary;
+  verificationToken?: string;
 }
 
 export interface LoginRequest {
@@ -52,6 +53,7 @@ export interface VerifyEmailResponse {
 
 export interface ResendVerificationResponse {
   message: string;
+  verificationToken?: string;
 }
 
 export interface ForgotPasswordRequest {

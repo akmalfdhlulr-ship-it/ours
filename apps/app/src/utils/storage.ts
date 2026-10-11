@@ -6,7 +6,14 @@ const memoryStore = new Map<string, string>();
 export const storage = {
   async getItem(key: string): Promise<string | null> {
     if (Platform.OS === 'web') {
-      // In web, never persist raw session tokens in browser localStorage or sessionStorage
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const val = window.localStorage.getItem(key);
+          if (val !== null) return val;
+        }
+      } catch {
+        // Fallback to memoryStore
+      }
       return memoryStore.get(key) ?? null;
     }
     try {
@@ -18,7 +25,13 @@ export const storage = {
 
   async setItem(key: string, value: string): Promise<void> {
     if (Platform.OS === 'web') {
-      // In web, keep in memory only (HttpOnly session cookie handles persistence securely)
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(key, value);
+        }
+      } catch {
+        // Fallback to memoryStore
+      }
       memoryStore.set(key, value);
       return;
     }
@@ -33,6 +46,13 @@ export const storage = {
 
   async removeItem(key: string): Promise<void> {
     if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem(key);
+        }
+      } catch {
+        // Fallback to memoryStore
+      }
       memoryStore.delete(key);
       return;
     }
