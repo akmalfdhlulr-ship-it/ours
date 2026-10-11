@@ -37,7 +37,7 @@ async function bootstrap() {
 
   // CORS configuration (supports Expo Web preview deployments, localhost, and custom domains with credentials)
   app.enableCors({
-    origin: (_origin, callback) => {
+    origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       callback(null, true);
     },
     credentials: true,
