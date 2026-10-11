@@ -35,13 +35,14 @@ async function bootstrap() {
     });
   });
 
-  // CORS configuration
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  // CORS configuration (supports Expo Web preview deployments like *.expo.app)
+  const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
+  const isWildcardOrigin = allowedOriginsEnv === '*' || allowedOriginsEnv === undefined;
+  const allowedOrigins: boolean | (string | RegExp)[] = isWildcardOrigin
+    ? true
     : [
-        'http://localhost:8081',
-        'http://localhost:19006',
-        'http://localhost:3000',
+        ...allowedOriginsEnv.split(',').map((o) => o.trim()),
+        /\.expo\.app$/,
         /^http:\/\/localhost:\d+$/,
       ];
 
