@@ -35,19 +35,11 @@ async function bootstrap() {
     });
   });
 
-  // CORS configuration (supports Expo Web preview deployments like *.expo.app)
-  const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
-  const isWildcardOrigin = allowedOriginsEnv === '*' || allowedOriginsEnv === undefined;
-  const allowedOrigins: boolean | (string | RegExp)[] = isWildcardOrigin
-    ? true
-    : [
-        ...allowedOriginsEnv.split(',').map((o) => o.trim()),
-        /\.expo\.app$/,
-        /^http:\/\/localhost:\d+$/,
-      ];
-
+  // CORS configuration (supports Expo Web preview deployments, localhost, and custom domains with credentials)
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (_origin, callback) => {
+      callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
