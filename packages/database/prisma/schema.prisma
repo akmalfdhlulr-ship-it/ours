@@ -1,0 +1,658 @@
+// ============================================================
+// OURS — Database Schema (Prisma ORM)
+// Phase 01 Approved Architecture Draft
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// IDENTITY & AUTH
+// ============================================================
+
+model User {
+  id                        String    @id @default(uuid()) @db.Uuid
+  email                     String    @unique
+  passwordHash              String    @map("password_hash")
+  emailVerified             Boolean   @default(false) @map("email_verified")
+  emailVerificationTokenHash String?  @map("email_verification_token_hash")
+  emailVerificationExpiresAt DateTime? @map("email_verification_expires_at")
+  passwordResetTokenHash    String?   @map("password_reset_token_hash")
+  passwordResetExpiresAt    DateTime? @map("password_reset_expires_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  profile           UserProfile?
+  sessions          Session[]
+  memberships       CoupleMembership[]
+  invitationsCreated CoupleInvitation[] @relation("InvitationCreator")
+  invitationsAccepted CoupleInvitation[] @relation("InvitationAcceptor")
+  savedPlaces       SavedPlace[]
+  wishlistItems     WishlistItem[]
+  datePlans         DatePlan[]
+  visits            Visit[]
+  reviews           Review[]
+  expenses          Expense[]
+  mediaAssets       MediaAsset[]
+  memories          Memory[]
+  albums            Album[]
+  calendarEvents    CalendarEvent[]
+  auditEvents       AuditEvent[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @unique @map("user_id") @db.Uuid
+  displayName String    @map("display_name")
+  avatarUrl   String?   @map("avatar_url")
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  timezone    String    @default("UTC")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  tokenHash    String   @unique @map("token_hash")
+  pushToken    String?  @map("push_token")
+  deviceInfo   String?  @map("device_info")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  lastActiveAt DateTime @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================================
+// COUPLE SPACES & MEMBERSHIP
+// ============================================================
+
+enum CoupleSpaceStatus {
+  PENDING
+  ACTIVE
+  ARCHIVED
+
+  @@map("couple_space_status")
+}
+
+model CoupleSpace {
+  id                   String            @id @default(uuid()) @db.Uuid
+  name                 String?
+  status               CoupleSpaceStatus @default(PENDING)
+  currencyCode         String            @default("USD") @map("currency_code") @db.VarChar(3)
+  timezone             String?
+  anniversaryDate      DateTime?         @map("anniversary_date") @db.Date
+  // quota_used_bytes: ACTIVE + recovery DELETED + reserved UPLOADING. Not physical R2.
+  quotaUsedBytes       BigInt            @default(0) @map("quota_used_bytes")
+  // physical_storage_bytes: objects still in R2 (ACTIVE, DELETED, PURGING, leftover UPLOADING).
+  physicalStorageBytes BigInt            @default(0) @map("physical_storage_bytes")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  version              Int               @default(1)
+
+  memberships    CoupleMembership[]
+  invitations    CoupleInvitation[]
+  places         Place[]
+  savedPlaces    SavedPlace[]
+  wishlistItems  WishlistItem[]
+  datePlans      DatePlan[]
+  dateStops      DateStop[]
+  visits         Visit[]
+  reviews        Review[]
+  expenses       Expense[]
+  mediaAssets    MediaAsset[]
+  memories       Memory[]
+  albums         Album[]
+  albumMemories  AlbumMemory[]
+  memoryMedia    MemoryMedia[]
+  calendarEvents CalendarEvent[]
+  auditEvents    AuditEvent[]
+
+  @@map("couple_spaces")
+}
+
+enum MembershipRole {
+  CREATOR
+  PARTNER
+
+  @@map("membership_role")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("membership_status")
+}
+
+model CoupleMembership {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  coupleSpaceId String           @map("couple_space_id") @db.Uuid
+  role          MembershipRole
+  status        MembershipStatus @default(ACTIVE)
+  joinedAt      DateTime         @default(now()) @map("joined_at")
+  archivedAt    DateTime?        @map("archived_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id])
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+
+  // A user can have only ONE active membership at a time
+  // Enforced via application logic + partial unique index
+  @@unique([userId, coupleSpaceId])
+  @@index([userId, status])
+  @@index([coupleSpaceId, status])
+  @@map("couple_memberships")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+
+  @@map("invitation_status")
+}
+
+model CoupleInvitation {
+  id               String           @id @default(uuid()) @db.Uuid
+  coupleSpaceId    String           @map("couple_space_id") @db.Uuid
+  createdById      String           @map("created_by_id") @db.Uuid
+  tokenHash        String           @unique @map("token_hash")
+  pairingCodeHmac  String           @unique @map("pairing_code_hmac")
+  pairingCodeKeyId String           @map("pairing_code_key_id") @db.VarChar(32)
+  status           InvitationStatus @default(PENDING)
+  expiresAt        DateTime         @map("expires_at")
+  acceptedAt       DateTime?        @map("accepted_at")
+  acceptedById     String?          @map("accepted_by_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  createdBy   User        @relation("InvitationCreator", fields: [createdById], references: [id])
+  acceptedBy  User?       @relation("InvitationAcceptor", fields: [acceptedById], references: [id])
+
+  @@index([coupleSpaceId, status])
+  @@index([expiresAt])
+  @@index([pairingCodeKeyId])
+  @@map("couple_invitations")
+}
+
+// ============================================================
+// PLACES
+// ============================================================
+
+model Place {
+  id              String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId   String?  @map("couple_space_id") @db.Uuid
+  provider        String?  @db.VarChar(50)
+  providerPlaceId String?  @map("provider_place_id")
+  name            String
+  address         String?
+  category        String?
+  latitude        Float?
+  longitude       Float?
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  coupleSpace CoupleSpace? @relation(fields: [coupleSpaceId], references: [id])
+  savedPlaces SavedPlace[]
+  dateStops   DateStop[]
+  visits      Visit[]
+  wishlistItems WishlistItem[]
+
+  // Deduplicate provider places globally. Manual places have coupleSpaceId set.
+  @@unique([provider, providerPlaceId])
+  @@index([coupleSpaceId])
+  @@index([category])
+  @@map("places")
+}
+
+model SavedPlace {
+  id            String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId String   @map("couple_space_id") @db.Uuid
+  placeId       String   @map("place_id") @db.Uuid
+  savedById     String   @map("saved_by_id") @db.Uuid
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  place       Place       @relation(fields: [placeId], references: [id])
+  savedBy     User        @relation(fields: [savedById], references: [id])
+
+  @@unique([coupleSpaceId, placeId])
+  @@index([coupleSpaceId])
+  @@map("saved_places")
+}
+
+// ============================================================
+// WISHLIST
+// ============================================================
+
+enum WishlistStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+
+  @@map("wishlist_status")
+}
+
+enum WishlistPriority {
+  LOW
+  MEDIUM
+  HIGH
+
+  @@map("wishlist_priority")
+}
+
+model WishlistItem {
+  id              String           @id @default(uuid()) @db.Uuid
+  coupleSpaceId   String           @map("couple_space_id") @db.Uuid
+  createdById     String           @map("created_by_id") @db.Uuid
+  title           String
+  description     String?
+  category        String?
+  priority        WishlistPriority @default(MEDIUM)
+  status          WishlistStatus   @default(ACTIVE)
+  targetDate      DateTime?        @map("target_date") @db.Date
+  budgetAmount    Int?             @map("budget_amount")
+  budgetCurrency  String?          @map("budget_currency") @db.VarChar(3)
+  linkedPlaceId   String?          @map("linked_place_id") @db.Uuid
+  completedAt     DateTime?        @map("completed_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  version         Int              @default(1)
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  linkedPlace Place?      @relation(fields: [linkedPlaceId], references: [id])
+  datePlans   DatePlan[]  @relation("WishlistDateLink")
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, status])
+  @@index([coupleSpaceId, priority])
+  @@map("wishlist_items")
+}
+
+// ============================================================
+// DATE PLANNER
+// ============================================================
+
+enum DatePlanStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("date_plan_status")
+}
+
+model DatePlan {
+  id               String         @id @default(uuid()) @db.Uuid
+  coupleSpaceId    String         @map("couple_space_id") @db.Uuid
+  createdById      String         @map("created_by_id") @db.Uuid
+  title            String
+  description      String?
+  status           DatePlanStatus @default(DRAFT)
+  plannedDate      DateTime?      @map("planned_date") @db.Date
+  plannedStartTime DateTime?      @map("planned_start_time") @db.Time()
+  budgetAmount     Int?           @map("budget_amount")
+  budgetCurrency   String?        @map("budget_currency") @db.VarChar(3)
+  linkedWishlistId String?        @map("linked_wishlist_id") @db.Uuid
+  checklist        Json?
+  completedAt      DateTime?      @map("completed_at")
+  cancelledAt      DateTime?      @map("cancelled_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  version          Int            @default(1)
+
+  coupleSpace    CoupleSpace    @relation(fields: [coupleSpaceId], references: [id])
+  createdBy      User           @relation(fields: [createdById], references: [id])
+  linkedWishlist WishlistItem?  @relation("WishlistDateLink", fields: [linkedWishlistId], references: [id])
+  stops          DateStop[]
+  visits         Visit[]
+  expenses       Expense[]
+  memories       Memory[]       @relation("DateMemoryLink")
+  calendarEvents CalendarEvent[]
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, status])
+  @@index([coupleSpaceId, plannedDate])
+  @@map("date_plans")
+}
+
+model DateStop {
+  id                   String   @id @default(uuid()) @db.Uuid
+  datePlanId           String   @map("date_plan_id") @db.Uuid
+  coupleSpaceId        String   @map("couple_space_id") @db.Uuid
+  placeId              String?  @map("place_id") @db.Uuid
+  title                String
+  notes                String?
+  sortOrder            Int      @map("sort_order")
+  estimatedStart       DateTime? @map("estimated_start") @db.Time()
+  estimatedDurationMin Int?     @map("estimated_duration_min")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  datePlan    DatePlan    @relation(fields: [datePlanId], references: [id], onDelete: Cascade)
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  place       Place?      @relation(fields: [placeId], references: [id])
+
+  @@unique([id, coupleSpaceId])
+  @@index([datePlanId, sortOrder])
+  @@index([coupleSpaceId])
+  @@map("date_stops")
+}
+
+// ============================================================
+// VISITS & REVIEWS
+// ============================================================
+
+model Visit {
+  id            String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId String   @map("couple_space_id") @db.Uuid
+  placeId       String?  @map("place_id") @db.Uuid
+  recordedById  String   @map("recorded_by_id") @db.Uuid
+  datePlanId    String?  @map("date_plan_id") @db.Uuid
+  visitedAt     DateTime @map("visited_at")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  place       Place?      @relation(fields: [placeId], references: [id])
+  recordedBy  User        @relation(fields: [recordedById], references: [id])
+  datePlan    DatePlan?   @relation(fields: [datePlanId], references: [id])
+  reviews     Review[]
+  memories    Memory[]    @relation("VisitMemoryLink")
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, visitedAt])
+  @@index([coupleSpaceId, placeId])
+  @@map("visits")
+}
+
+model Review {
+  id              String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId   String   @map("couple_space_id") @db.Uuid
+  visitId         String   @map("visit_id") @db.Uuid
+  authorId        String   @map("author_id") @db.Uuid
+  overallRating   Int      @map("overall_rating") @db.SmallInt
+  categoryRatings Json?    @map("category_ratings")
+  text            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  version         Int      @default(1)
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  visit       Visit       @relation(fields: [visitId], references: [id])
+  author      User        @relation(fields: [authorId], references: [id])
+
+  @@unique([id, coupleSpaceId])
+  @@unique([visitId, authorId])
+  @@index([coupleSpaceId])
+  @@map("reviews")
+}
+
+// ============================================================
+// EXPENSES
+// ============================================================
+
+enum ExpenseStatus {
+  ACTIVE
+  VOIDED
+
+  @@map("expense_status")
+}
+
+model Expense {
+  id            String        @id @default(uuid()) @db.Uuid
+  coupleSpaceId String        @map("couple_space_id") @db.Uuid
+  datePlanId    String?       @map("date_plan_id") @db.Uuid
+  paidById      String        @map("paid_by_id") @db.Uuid
+  description   String
+  amount        Int
+  currencyCode  String        @map("currency_code") @db.VarChar(3)
+  category      String?
+  status        ExpenseStatus @default(ACTIVE)
+  expenseDate   DateTime      @map("expense_date") @db.Date
+  voidReason    String?       @map("void_reason")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  datePlan    DatePlan?   @relation(fields: [datePlanId], references: [id])
+  paidBy      User        @relation(fields: [paidById], references: [id])
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, expenseDate])
+  @@index([coupleSpaceId, status])
+  @@map("expenses")
+}
+
+// ============================================================
+// MEDIA & MEMORIES
+// ============================================================
+
+enum MediaStatus {
+  UPLOADING
+  ACTIVE
+  FAILED
+  DELETED
+  PURGING
+  PURGED
+
+  @@map("media_status")
+}
+
+model MediaAsset {
+  id                 String      @id @default(uuid()) @db.Uuid
+  coupleSpaceId      String      @map("couple_space_id") @db.Uuid
+  uploadedById       String      @map("uploaded_by_id") @db.Uuid
+  storageKey         String      @unique @map("storage_key")
+  originalFilename   String      @map("original_filename")
+  mimeType           String      @map("mime_type")
+  fileSizeBytes      Int         @default(0) @map("file_size_bytes")
+  width              Int?
+  height             Int?
+  status             MediaStatus @default(UPLOADING)
+  r2ObjectPresent    Boolean     @default(false) @map("r2_object_present")
+  quotaCounted       Boolean     @default(false) @map("quota_counted")
+  purgeAttempts      Int         @default(0) @map("purge_attempts")
+  lastPurgeError     String?     @map("last_purge_error")
+  lastPurgeAttemptAt DateTime?   @map("last_purge_attempt_at")
+  metadata           Json?
+  capturedAt         DateTime?   @map("captured_at")
+  deletedAt          DateTime?   @map("deleted_at")
+  createdAt          DateTime    @default(now()) @map("created_at")
+
+  coupleSpace  CoupleSpace   @relation(fields: [coupleSpaceId], references: [id])
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id])
+  memoryMedia  MemoryMedia[]
+  albumCovers  Album[]       @relation("AlbumCover")
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, status])
+  @@index([coupleSpaceId, capturedAt])
+  @@index([coupleSpaceId, r2ObjectPresent])
+  @@map("media_assets")
+}
+
+model Memory {
+  id               String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId    String   @map("couple_space_id") @db.Uuid
+  createdById      String   @map("created_by_id") @db.Uuid
+  title            String
+  description      String?
+  memoryDate       DateTime @map("memory_date") @db.Date
+  latitude         Float?
+  longitude        Float?
+  locationName     String?  @map("location_name")
+  linkedVisitId    String?  @map("linked_visit_id") @db.Uuid
+  linkedDatePlanId String?  @map("linked_date_plan_id") @db.Uuid
+  isFavorite       Boolean  @default(false) @map("is_favorite")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  version          Int      @default(1)
+
+  coupleSpace    CoupleSpace   @relation(fields: [coupleSpaceId], references: [id])
+  createdBy      User          @relation(fields: [createdById], references: [id])
+  linkedVisit    Visit?        @relation("VisitMemoryLink", fields: [linkedVisitId], references: [id])
+  linkedDatePlan DatePlan?     @relation("DateMemoryLink", fields: [linkedDatePlanId], references: [id])
+  media          MemoryMedia[]
+  albumMemories  AlbumMemory[]
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, memoryDate])
+  @@index([coupleSpaceId, isFavorite])
+  @@map("memories")
+}
+
+model MemoryMedia {
+  id            String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId String   @map("couple_space_id") @db.Uuid
+  memoryId      String   @map("memory_id") @db.Uuid
+  mediaAssetId  String   @map("media_asset_id") @db.Uuid
+  sortOrder     Int      @map("sort_order")
+  caption       String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  memory      Memory      @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  mediaAsset  MediaAsset  @relation(fields: [mediaAssetId], references: [id])
+
+  @@unique([memoryId, mediaAssetId])
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId])
+  @@index([memoryId, sortOrder])
+  @@map("memory_media")
+}
+
+// ============================================================
+// ALBUMS
+// ============================================================
+
+model Album {
+  id            String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId String   @map("couple_space_id") @db.Uuid
+  createdById   String   @map("created_by_id") @db.Uuid
+  title         String
+  description   String?
+  coverMediaId  String?  @map("cover_media_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  version       Int      @default(1)
+
+  coupleSpace   CoupleSpace   @relation(fields: [coupleSpaceId], references: [id])
+  createdBy     User          @relation(fields: [createdById], references: [id])
+  coverMedia    MediaAsset?   @relation("AlbumCover", fields: [coverMediaId], references: [id])
+  albumMemories AlbumMemory[]
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId])
+  @@map("albums")
+}
+
+model AlbumMemory {
+  id            String   @id @default(uuid()) @db.Uuid
+  coupleSpaceId String   @map("couple_space_id") @db.Uuid
+  albumId       String   @map("album_id") @db.Uuid
+  memoryId      String   @map("memory_id") @db.Uuid
+  sortOrder     Int      @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  coupleSpace CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  album       Album       @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  memory      Memory      @relation(fields: [memoryId], references: [id])
+
+  @@unique([albumId, memoryId])
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId])
+  @@index([albumId, sortOrder])
+  @@map("album_memories")
+}
+
+// ============================================================
+// CALENDAR
+// ============================================================
+
+enum CalendarEventType {
+  MANUAL
+  DATE_LINKED
+  ANNIVERSARY
+  REMINDER
+
+  @@map("calendar_event_type")
+}
+
+model CalendarEvent {
+  id               String            @id @default(uuid()) @db.Uuid
+  coupleSpaceId    String            @map("couple_space_id") @db.Uuid
+  createdById      String            @map("created_by_id") @db.Uuid
+  title            String
+  description      String?
+  eventType        CalendarEventType @map("event_type")
+  startAt          DateTime          @map("start_at")
+  endAt            DateTime?         @map("end_at")
+  allDay           Boolean           @default(false) @map("all_day")
+  linkedDatePlanId String?           @map("linked_date_plan_id") @db.Uuid
+  reminderConfig   Json?             @map("reminder_config")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  version          Int               @default(1)
+
+  coupleSpace    CoupleSpace @relation(fields: [coupleSpaceId], references: [id])
+  createdBy      User        @relation(fields: [createdById], references: [id])
+  linkedDatePlan DatePlan?   @relation(fields: [linkedDatePlanId], references: [id])
+
+  @@unique([id, coupleSpaceId])
+  @@index([coupleSpaceId, startAt])
+  @@index([coupleSpaceId, eventType])
+  @@map("calendar_events")
+}
+
+// ============================================================
+// AUDIT
+// ============================================================
+
+model AuditEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  coupleSpaceId String?  @map("couple_space_id") @db.Uuid
+  eventType     String   @map("event_type")
+  resourceType  String?  @map("resource_type")
+  resourceId    String?  @map("resource_id") @db.Uuid
+  details       Json?
+  ipAddress     String?  @map("ip_address")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user        User?        @relation(fields: [userId], references: [id])
+  coupleSpace CoupleSpace? @relation(fields: [coupleSpaceId], references: [id])
+
+  @@index([userId])
+  @@index([coupleSpaceId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("audit_events")
+}

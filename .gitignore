@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Build outputs & caches
+dist/
+build/
+coverage/
+dist-web/
+.turbo/
+.next/
+.expo/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local Application Data & Persistence Stores
+data/
+apps/api/data/
+*.sqlite
+*.sqlite3
+
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Agent, AI configs & skill catalogs (Excluded per user request)
+.agents/
+agent/
+.claude/
+.cursor/
+.vscode/
+skills/
+skills-lock.json
+antislop.md
+AGENTS.md
+apps/app/AGENTS.md
+
+# Documentation & Design references (Excluded per user request)
+docs/
+design-system/
+
+# Scratch & Temporary files
+scratch*.txt
+*.backup
+package-lock.json
+apps/app/package-lock.json

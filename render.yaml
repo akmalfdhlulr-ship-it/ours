@@ -1,0 +1,78 @@
+# ==============================================================================
+# render.yaml — Render Infrastructure as Code (Blueprint) for OURS Monorepo
+# Documentation: https://render.com/docs/blueprint-spec
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. OURS Backend API (NestJS Modular Monolith)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: ours-api
+    runtime: node
+    plan: starter
+    region: singapore # Paling dekat dengan latency rendah untuk pengguna Indonesia
+    buildCommand: pnpm install && pnpm build
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/v1/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+      # Database Connections (Supabase PostgreSQL 16)
+      # DATABASE_URL menggunakan connection pooler PgBouncer port 6543
+      - key: DATABASE_URL
+        sync: false
+      # DIRECT_URL menggunakan direct connection port 5432 untuk migrasi
+      - key: DIRECT_URL
+        sync: false
+
+      # Keamanan Hashing Pairing Code (Minimal 32 karakter acak)
+      - key: PAIRING_CODE_HMAC_SECRET
+        generateValue: true
+
+      # Media Storage (Cloudinary)
+      - key: STORAGE_DRIVER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # Google Gemini AI Service
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+
+      # CORS & Client Application URL
+      - key: ALLOWED_ORIGINS
+        value: https://ours-app.onrender.com
+      - key: APP_BASE_URL
+        value: https://ours-app.onrender.com
+
+  # ----------------------------------------------------------------------------
+  # 2. OURS Web Client (Expo Router Web Static Site)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: ours-app
+    runtime: static
+    plan: free
+    region: singapore
+    buildCommand: pnpm install && pnpm --filter @ours/app exec expo export --platform web
+    staticPublishPath: apps/app/dist
+    autoDeploy: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: EXPO_PUBLIC_API_URL
+        value: https://ours-api.onrender.com/api/v1
