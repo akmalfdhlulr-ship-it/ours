@@ -22,8 +22,18 @@ async function bootstrap() {
   // Enable graceful shutdown hooks
   app.enableShutdownHooks();
 
-  // API Versioning and Prefix
-  app.setGlobalPrefix('api/v1');
+  // API Versioning and Prefix (exclude root '/' so visiting domain directly returns status)
+  app.setGlobalPrefix('api/v1', { exclude: ['/'] });
+
+  app.getHttpAdapter().get('/', (_req: any, res: any) => {
+    res.json({
+      name: 'OURS API',
+      status: 'online',
+      version: '1.0.0',
+      health: '/api/v1/health',
+      timestamp: new Date().toISOString(),
+    });
+  });
 
   // CORS configuration
   const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -61,7 +71,7 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`OURS API started successfully on port ${port} (prefix: /api/v1)`, 'Bootstrap');
 }
