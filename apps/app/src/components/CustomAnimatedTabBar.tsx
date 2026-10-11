@@ -174,6 +174,12 @@ export function CustomAnimatedTabBar({
   descriptors,
   navigation,
 }: any) {
+  const focusedRoute = state.routes[state.index];
+  const focusedOptions = descriptors[focusedRoute?.key]?.options;
+  if (focusedOptions?.tabBarStyle?.display === 'none') {
+    return null;
+  }
+
   return (
     <View style={styles.floatingContainer}>
       <View style={styles.barCard}>
@@ -257,6 +263,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     paddingVertical: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   activePill: {
     position: 'absolute',

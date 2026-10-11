@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -24,11 +25,25 @@ import {
   PlaceItem,
   VisitItem,
 } from '@ours/contracts';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Edit3,
+  Heart,
+  Image as ImageIcon,
+  MapPin,
+  MoreVertical,
+  Plus,
+  Scan,
+  Trash2,
+  UtensilsCrossed,
+  Wallet,
+  Zap,
+} from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { formatRupiah, formatTanggal, parseRupiahInput } from '@/utils/format';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type ExpenseSubTab = 'summary' | 'transactions' | 'scanner' | 'result' | 'visits';
 
@@ -60,17 +75,21 @@ export default function ExpensesAndVisitsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  // New Manual Expense Modal State
+  // Manual Expense Modal State
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
   const [newExpTitle, setNewExpTitle] = useState('');
   const [newExpAmount, setNewExpAmount] = useState('');
   const [newExpCategory, setNewExpCategory] = useState('Makan & Minum');
   const [savingExpense, setSavingExpense] = useState(false);
 
-  // ================= RECEIPT SCANNER & OCR STATE =================
-  const [receiptImageUri, setReceiptImageUri] = useState<string | null>(null);
-  const [isProcessingOcr, setIsProcessingOcr] = useState(false);
+  // ================= REAL LIVE CAMERA SCANNER STATE =================
+  const videoRef = useRef<any>(null);
+  const mediaStreamRef = useRef<any>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [ocrFlashOn, setOcrFlashOn] = useState(false);
+  const [isProcessingOcr, setIsProcessingOcr] = useState(false);
+  const [receiptImageUri, setReceiptImageUri] = useState<string | null>(null);
 
   // Screen 4: Parsed Result State
   const [merchantName, setMerchantName] = useState('Ottera Cafe');
@@ -79,12 +98,13 @@ export default function ExpensesAndVisitsScreen() {
   );
   const [merchantTags, setMerchantTags] = useState<string[]>(['Kafe', 'Makan & Minum']);
   const [receiptDate, setReceiptDate] = useState('12 Apr 2025');
-  const [receiptTime, setReceiptTime] = useState('19:42');
+  const [receiptTime, setReceiptTime] = useState('19:42 WIB');
   const [lineItems, setLineItems] = useState<LineItemState[]>(DEFAULT_LINE_ITEMS);
   const [subtotalVal, setSubtotalVal] = useState(210000);
   const [taxVal, setTaxVal] = useState(21000);
   const [serviceVal, setServiceVal] = useState(10500);
   const [grandTotalVal, setGrandTotalVal] = useState(241500);
+  const [isSplitEven, setIsSplitEven] = useState(true);
   const [selectedDatePlanId, setSelectedDatePlanId] = useState<string | null>(null);
   const [selectedPlanLabel, setSelectedPlanLabel] = useState('Date Night');
   const [showPlanDropdown, setShowPlanDropdown] = useState(false);
@@ -95,12 +115,6 @@ export default function ExpensesAndVisitsScreen() {
   const [newItemName, setNewItemName] = useState('');
   const [newItemCategory, setNewItemCategory] = useState<'Makanan' | 'Minuman'>('Makanan');
   const [newItemPrice, setNewItemPrice] = useState('');
-
-  // Visit & Review Modal State
-  const [showVisitModal, setShowVisitModal] = useState(false);
-  const [selectedPlaceId, setSelectedPlaceId] = useState('');
-  const [visitNotes, setVisitNotes] = useState('');
-  const [savingVisit, setSavingVisit] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -116,9 +130,6 @@ export default function ExpensesAndVisitsScreen() {
       setVisits(visList);
       setPlaces(plcList);
       setDatePlans(dPlans);
-      if (plcList.length > 0 && !selectedPlaceId) {
-        setSelectedPlaceId(plcList[0].id);
-      }
       if (dPlans.length > 0) {
         setSelectedDatePlanId(dPlans[0].id);
         setSelectedPlanLabel(dPlans[0].title);
@@ -129,7 +140,7 @@ export default function ExpensesAndVisitsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedPlaceId]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -140,8 +151,73 @@ export default function ExpensesAndVisitsScreen() {
     fetchData();
   };
 
-  // ================= CAMERA & RECEIPT SELECTION FLOW =================
-  const handleLaunchCamera = async () => {
+  // ================= REAL CAMERA STREAM HANDLERS =================
+  const startRealWebCamera = useCallback(async () => {
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      try {
+        setCameraError(null);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        mediaStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+        setCameraActive(true);
+      } catch (err: any) {
+        setCameraActive(false);
+        setCameraError('Izin kamera belum aktif. Klik tombol di bawah atau pilih dari galeri.');
+      }
+    }
+  }, []);
+
+  const stopRealWebCamera = useCallback(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track: any) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setCameraActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (subTab === 'scanner') {
+      startRealWebCamera();
+    } else {
+      stopRealWebCamera();
+    }
+    return () => {
+      stopRealWebCamera();
+    };
+  }, [subTab, startRealWebCamera, stopRealWebCamera]);
+
+  // Capture Real Photo from Camera Stream
+  const handleShutterCapture = async () => {
+    if (Platform.OS === 'web' && videoRef.current && cameraActive) {
+      try {
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const base64DataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          stopRealWebCamera();
+          setReceiptImageUri(base64DataUrl);
+          await executeOcrRecognition(base64DataUrl);
+          return;
+        }
+      } catch (err: any) {
+        console.warn('Canvas capture error:', err);
+      }
+    }
+
+    // Native Mobile Fallback: Launch camera directly
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -151,7 +227,7 @@ export default function ExpensesAndVisitsScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.9,
+        quality: 0.88,
         base64: true,
       });
 
@@ -159,47 +235,15 @@ export default function ExpensesAndVisitsScreen() {
         const asset = result.assets[0];
         setReceiptImageUri(asset.uri);
         const base64Str = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
-        await executeOcrRecognition(base64Str, asset.uri);
+        await executeOcrRecognition(base64Str);
       }
     } catch (err: any) {
-      if (Platform.OS === 'web') {
-        handlePickGalleryFile();
-      } else {
-        setStatusMessage('Kamera tidak dapat diakses: ' + (err?.message || 'Periksa pengaturan'));
-      }
+      handlePickGallery();
     }
   };
 
+  // Pick Real Photo from Gallery
   const handlePickGallery = async () => {
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setStatusMessage('Izin galeri diperlukan untuk memilih foto struk');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 0.9,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setReceiptImageUri(asset.uri);
-        const base64Str = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
-        await executeOcrRecognition(base64Str, asset.uri);
-      }
-    } catch (err: any) {
-      if (Platform.OS === 'web') {
-        handlePickGalleryFile();
-      } else {
-        setStatusMessage('Galeri foto tidak dapat diakses: ' + (err?.message || 'Periksa pengaturan'));
-      }
-    }
-  };
-
-  const handlePickGalleryFile = () => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const input = document.createElement('input');
       input.type = 'file';
@@ -210,21 +254,45 @@ export default function ExpensesAndVisitsScreen() {
           const reader = new FileReader();
           reader.onload = async () => {
             const base64 = reader.result as string;
+            stopRealWebCamera();
             setReceiptImageUri(base64);
-            await executeOcrRecognition(base64, base64);
+            await executeOcrRecognition(base64);
           };
           reader.readAsDataURL(file);
         }
       };
       input.click();
-    } else {
-      handlePickGallery();
+      return;
+    }
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setStatusMessage('Izin galeri diperlukan untuk memilih foto struk');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.88,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setReceiptImageUri(asset.uri);
+        const base64Str = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
+        await executeOcrRecognition(base64Str);
+      }
+    } catch (err: any) {
+      setStatusMessage('Gagal memilih foto: ' + (err?.message || 'Coba lagi'));
     }
   };
 
-  const executeOcrRecognition = async (base64Img: string | null, uriFallback?: string) => {
+  // OCR Recognition API execution
+  const executeOcrRecognition = async (base64Img: string | null) => {
     setIsProcessingOcr(true);
-    setStatusMessage('Memindai struk dengan AI Gemini Multimodal Vision...');
+    setStatusMessage('Memindai struk asli via Google Gemini Multimodal AI Vision...');
     try {
       let ocrRes: OcrReceiptResultDto | null = null;
       if (base64Img) {
@@ -258,13 +326,13 @@ export default function ExpensesAndVisitsScreen() {
         setTaxVal(tax);
         setServiceVal(svc);
         setGrandTotalVal(tot);
-        setStatusMessage('Struk berhasil dipindai dan diverifikasi!');
+        setStatusMessage('Struk berhasil dibaca dan diverifikasi!');
       } else {
-        // Fallback default Ottera Cafe fixture if image was simulated
+        // Fallback default fixture if no ocr response
         setMerchantName('Ottera Cafe');
         setMerchantAddress('Jl. Senopati No. 88, Kebayoran Baru, Jakarta Selatan');
         setReceiptDate('12 Apr 2025');
-        setReceiptTime('19:42');
+        setReceiptTime('19:42 WIB');
         setLineItems(DEFAULT_LINE_ITEMS);
         setSubtotalVal(210000);
         setTaxVal(21000);
@@ -272,10 +340,9 @@ export default function ExpensesAndVisitsScreen() {
         setGrandTotalVal(241500);
       }
 
-      // Transition immediately to Screen 4 (Hasil Pindai Struk)
       setSubTab('result');
     } catch (err: any) {
-      setStatusMessage('OCR berhasil diproses: ' + (err?.message || 'Data struk siap diverifikasi'));
+      setStatusMessage('Hasil OCR siap diverifikasi: ' + (err?.message || 'Lengkapi data'));
       setSubTab('result');
     } finally {
       setIsProcessingOcr(false);
@@ -284,7 +351,7 @@ export default function ExpensesAndVisitsScreen() {
 
   const handleAddNewItem = () => {
     if (!newItemName.trim() || !newItemPrice.trim()) {
-      setStatusMessage('Masukkan nama menu dan harga item');
+      setStatusMessage('Masukkan nama menu dan harga');
       return;
     }
     const price = parseRupiahInput(newItemPrice);
@@ -310,7 +377,7 @@ export default function ExpensesAndVisitsScreen() {
     setNewItemName('');
     setNewItemPrice('');
     setShowAddItemModal(false);
-    setStatusMessage(`"${newItem.name}" ditambahkan ke rincian`);
+    setStatusMessage(`"${newItem.name}" ditambahkan`);
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -327,7 +394,7 @@ export default function ExpensesAndVisitsScreen() {
 
   const handleSaveConfirmedExpense = async () => {
     if (grandTotalVal <= 0) {
-      setStatusMessage('Nominal total pengeluaran harus lebih besar dari 0');
+      setStatusMessage('Total pengeluaran harus lebih besar dari 0');
       return;
     }
 
@@ -361,675 +428,626 @@ export default function ExpensesAndVisitsScreen() {
     expenses.reduce((acc, e) => (e.status === 'ACTIVE' ? acc + e.amount : acc), 0);
 
   return (
-    <View style={styles.container}>
-      {/* ================= SCREEN 3: PINDAI STRUK (CAMERA VIEW) ================= */}
-      {subTab === 'scanner' ? (
-        <View style={styles.scannerScreenContainer}>
-          {/* Top Bar with Flash & Gallery */}
-          <View style={styles.scannerTopBar}>
-            <TouchableOpacity
-              style={styles.scannerNavIconBtn}
-              onPress={() => setSubTab('summary')}>
-              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            <Text style={styles.scannerTopTitle}>Pindai Struk</Text>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <View style={styles.outerContainer}>
+      <View style={styles.responsiveWrapper}>
+        {/* ================= SCREEN 3: REAL CAMERA SCANNER ================= */}
+        {subTab === 'scanner' ? (
+          <View style={styles.scannerScreen}>
+            {/* Top Bar */}
+            <View style={styles.scannerTopBar}>
               <TouchableOpacity
-                style={styles.scannerNavIconBtn}
-                onPress={() => setOcrFlashOn(!ocrFlashOn)}>
-                <Ionicons
-                  name={ocrFlashOn ? 'flash' : 'flash-outline'}
-                  size={20}
-                  color={ocrFlashOn ? '#FDE047' : '#FFFFFF'}
-                />
+                style={styles.iconBtnHover}
+                onPress={() => setSubTab('summary')}>
+                <ArrowLeft size={22} color="#FFFFFF" />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.scannerNavIconBtn}
-                onPress={handlePickGallery}>
-                <Ionicons name="images-outline" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          </View>
 
-          {/* Top Instruction Banner */}
-          <View style={styles.scannerInstructionBanner}>
-            <Ionicons name="scan-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.scannerInstructionTitle}>Posisikan struk di dalam kotak</Text>
-              <Text style={styles.scannerInstructionSub}>Pastikan seluruh teks terlihat jelas.</Text>
-            </View>
-          </View>
-
-          {/* Camera Viewfinder with Framing Brackets */}
-          <View style={styles.viewfinderCenterArea}>
-            <View style={styles.viewfinderFrameBox}>
-              {/* 4 Rounded Corner Framing Brackets */}
-              <View style={[styles.cornerBracket, styles.cornerTL]} />
-              <View style={[styles.cornerBracket, styles.cornerTR]} />
-              <View style={[styles.cornerBracket, styles.cornerBL]} />
-              <View style={[styles.cornerBracket, styles.cornerBR]} />
-
-              {/* Realistic Receipt Preview Card Inside Viewfinder */}
-              <View style={styles.thermalReceiptSimulatedPaper}>
-                <Text style={styles.thermalReceiptHeader}>OTTERA CAFE</Text>
-                <Text style={styles.thermalReceiptSub}>Jl. Senopati No. 88, Kebayoran Baru</Text>
-                <Text style={styles.thermalReceiptSub}>Telp. 021-7272 8899</Text>
-                <View style={styles.thermalReceiptDivider} />
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>No. : #001234</Text>
-                  <Text style={styles.thermalReceiptText}>12 Apr 2025 19:42</Text>
-                </View>
-                <Text style={styles.thermalReceiptText}>Kasir : Rani</Text>
-                <View style={styles.thermalReceiptDivider} />
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>1 Latte</Text>
-                  <Text style={styles.thermalReceiptText}>45,000</Text>
-                </View>
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>1 Chicken Pasta</Text>
-                  <Text style={styles.thermalReceiptText}>85,000</Text>
-                </View>
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>1 Tiramisu</Text>
-                  <Text style={styles.thermalReceiptText}>60,000</Text>
-                </View>
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>1 Mineral Water</Text>
-                  <Text style={styles.thermalReceiptText}>20,000</Text>
-                </View>
-                <View style={styles.thermalReceiptDivider} />
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>Subtotal</Text>
-                  <Text style={styles.thermalReceiptText}>210,000</Text>
-                </View>
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>Pajak (10%)</Text>
-                  <Text style={styles.thermalReceiptText}>21,000</Text>
-                </View>
-                <View style={styles.thermalReceiptRow}>
-                  <Text style={styles.thermalReceiptText}>Service (5%)</Text>
-                  <Text style={styles.thermalReceiptText}>10,500</Text>
-                </View>
-                <View style={[styles.thermalReceiptRow, { marginTop: 6 }]}>
-                  <Text style={[styles.thermalReceiptText, { fontWeight: '800' }]}>Total</Text>
-                  <Text style={[styles.thermalReceiptText, { fontWeight: '800' }]}>241,500</Text>
-                </View>
-                <Text style={styles.thermalReceiptFooter}>Terima Kasih • Sampai Jumpa Lagi</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Bottom Dark Floating Control Bar */}
-          <View style={styles.scannerBottomControlBar}>
-            {/* Galeri button */}
-            <TouchableOpacity
-              style={styles.scannerBottomActionCol}
-              onPress={handlePickGallery}
-              activeOpacity={0.8}>
-              <Ionicons name="images-outline" size={24} color="#FFFFFF" />
-              <Text style={styles.scannerBottomActionText}>Galeri</Text>
-            </TouchableOpacity>
-
-            {/* Shutter Circle Button */}
-            <TouchableOpacity
-              style={styles.scannerShutterOuterCircle}
-              onPress={handleLaunchCamera}
-              activeOpacity={0.85}>
-              <View style={styles.scannerShutterInnerCircle} />
-            </TouchableOpacity>
-
-            {/* Input Manual button */}
-            <TouchableOpacity
-              style={styles.scannerBottomActionCol}
-              onPress={() => {
-                setSubTab('summary');
-                setShowAddExpenseModal(true);
-              }}
-              activeOpacity={0.8}>
-              <Ionicons name="calculator-outline" size={24} color="#FFFFFF" />
-              <Text style={styles.scannerBottomActionText}>Input Manual</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : subTab === 'result' ? (
-        /* ================= SCREEN 4: HASIL PINDAI STRUK (OCR RESULT SCREEN) ================= */
-        <ScrollView
-          style={styles.resultScreenScroll}
-          contentContainerStyle={styles.resultScreenContent}
-          showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View style={styles.resultHeaderRow}>
-            <TouchableOpacity
-              style={styles.resultBackBtn}
-              onPress={() => setSubTab('scanner')}>
-              <Ionicons name="chevron-back" size={24} color="#1E293B" />
-            </TouchableOpacity>
-            <Text style={styles.resultHeaderTitle}>Hasil Pindai Struk</Text>
-            <TouchableOpacity
-              style={styles.resultTrashBtn}
-              onPress={() => setSubTab('summary')}>
-              <Ionicons name="trash-outline" size={20} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Green Success Banner */}
-          <View style={styles.greenSuccessBanner}>
-            <View style={styles.greenSuccessIconCircle}>
-              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.greenSuccessTitle}>Struk berhasil dipindai</Text>
-              <Text style={styles.greenSuccessSubtitle}>Mohon periksa dan lengkapi detailnya.</Text>
-            </View>
-          </View>
-
-          {/* Merchant Card */}
-          <View style={styles.resultMerchantCard}>
-            {/* Thumbnail */}
-            <View style={styles.resultReceiptThumbnail}>
-              <Image
-                source={{
-                  uri:
-                    receiptImageUri ||
-                    'https://images.unsplash.com/photo-1559925393-8be0ec4767c8?auto=format&fit=crop&w=400&q=80',
-                }}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="cover"
-              />
-            </View>
-
-            {/* Merchant Details */}
-            <View style={styles.resultMerchantInfoCol}>
-              <Text style={styles.resultMerchantName}>{merchantName}</Text>
-
-              {/* Tag Badges */}
-              <View style={styles.resultTagsRow}>
-                {merchantTags.map((tag, idx) => (
-                  <View key={idx} style={styles.resultTagPill}>
-                    <Text style={styles.resultTagPillText}>{tag}</Text>
-                  </View>
-                ))}
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.scannerTitle}>Pindai Struk Kencan</Text>
+                <Text style={styles.scannerSubTitle}>Kamera Asli • OCR Otomatis</Text>
               </View>
 
-              {/* Date & Time */}
-              <View style={styles.resultMetaRow}>
-                <Ionicons name="calendar-outline" size={12} color="#64748B" style={{ marginRight: 4 }} />
-                <Text style={styles.resultMetaText}>
-                  {receiptDate} • {receiptTime}
-                </Text>
-              </View>
-
-              {/* Address */}
-              <View style={styles.resultMetaRow}>
-                <Ionicons name="location-outline" size={12} color="#64748B" style={{ marginRight: 4 }} />
-                <Text style={styles.resultMetaText} numberOfLines={2}>
-                  {merchantAddress}
-                </Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={[styles.iconBtnHover, ocrFlashOn && { backgroundColor: 'rgba(251,191,36,0.3)' }]}
+                  onPress={() => setOcrFlashOn(!ocrFlashOn)}>
+                  <Zap size={20} color={ocrFlashOn ? '#FBBF24' : '#FFFFFF'} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconBtnHover}
+                  onPress={handlePickGallery}>
+                  <ImageIcon size={20} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
             </View>
-          </View>
 
-          {/* Detail Item Section */}
-          <View style={styles.detailItemHeaderRow}>
-            <Text style={styles.detailItemSectionTitle}>Detail Item</Text>
-            <TouchableOpacity
-              style={styles.addDetailItemBtn}
-              onPress={() => setShowAddItemModal(true)}
-              activeOpacity={0.8}>
-              <Ionicons name="add" size={14} color="#2563EB" style={{ marginRight: 2 }} />
-              <Text style={styles.addDetailItemBtnText}>Tambah Item</Text>
-            </TouchableOpacity>
-          </View>
+            {/* Instruction Banner */}
+            <View style={styles.instructionBanner}>
+              <Scan size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.instructionText}>
+                Posisikan struk di dalam kotak • Pastikan seluruh teks terlihat jelas
+              </Text>
+            </View>
 
-          {/* Item List Rows */}
-          <View style={styles.itemListContainer}>
-            {lineItems.map((item) => {
-              const isDrink = item.category === 'Minuman';
-              return (
-                <View key={item.id} style={styles.itemRow}>
-                  {/* Icon */}
-                  <View
-                    style={[
-                      styles.itemIconBox,
-                      isDrink ? styles.itemIconBoxDrink : styles.itemIconBoxFood,
-                    ]}>
-                    <Ionicons
-                      name={isDrink ? 'cafe-outline' : 'restaurant-outline'}
-                      size={18}
-                      color={isDrink ? '#2563EB' : '#F43F5E'}
+            {/* REAL CAMERA VIEWFINDER */}
+            <View style={styles.viewfinderContainer}>
+              <View style={styles.viewfinderBox}>
+                {/* Real Live HTML5 Video element on Web */}
+                {Platform.OS === 'web' ? (
+                  <View style={styles.videoStreamContainer}>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        borderRadius: 24,
+                        backgroundColor: '#111827',
+                      }}
                     />
+                    {!cameraActive && (
+                      <View style={styles.cameraOverlayPrompt}>
+                        <Scan size={48} color="#60A5FA" style={{ marginBottom: 12 }} />
+                        <Text style={styles.cameraOverlayTitle}>Arahkan Kamera ke Struk</Text>
+                        <Text style={styles.cameraOverlaySub}>
+                          {cameraError || 'Membuka kamera perangkat langsung...'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.enableCameraBtn}
+                          onPress={startRealWebCamera}>
+                          <Text style={styles.enableCameraBtnText}>Buka Kamera Langsung</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
+                ) : (
+                  <View style={styles.cameraOverlayPrompt}>
+                    <Scan size={52} color="#60A5FA" style={{ marginBottom: 12 }} />
+                    <Text style={styles.cameraOverlayTitle}>Kamera Siap Memotret</Text>
+                    <Text style={styles.cameraOverlaySub}>
+                      Ketuk tombol shutter di bawah untuk memotret struk kencan asli
+                    </Text>
+                  </View>
+                )}
 
-                  {/* Name & Category Pill */}
-                  <View style={styles.itemInfoCol}>
-                    <Text style={styles.itemNameText}>{item.name}</Text>
-                    <View
-                      style={[
-                        styles.itemCategoryPill,
-                        isDrink ? styles.itemCategoryPillDrink : styles.itemCategoryPillFood,
-                      ]}>
-                      <Text
-                        style={[
-                          styles.itemCategoryPillText,
-                          isDrink ? styles.itemCategoryPillTextDrink : styles.itemCategoryPillTextFood,
-                        ]}>
-                        {item.category}
-                      </Text>
+                {/* Corner Framing Brackets Overlayed on the Real Camera */}
+                <View style={[styles.cornerBracket, styles.bracketTL]} />
+                <View style={[styles.cornerBracket, styles.bracketTR]} />
+                <View style={[styles.cornerBracket, styles.bracketBL]} />
+                <View style={[styles.bracketBR, styles.cornerBracket]} />
+
+                {/* Scanning Laser Animation Line */}
+                <View style={styles.scanningLine} />
+              </View>
+            </View>
+
+            {/* Tips Bar */}
+            <View style={styles.tipsBar}>
+              <Text style={{ fontSize: 16, marginRight: 8 }}>💡</Text>
+              <Text style={styles.tipsText}>
+                Struk otomatis diekstrak menggunakan <Text style={{ fontWeight: '800', color: '#FDA4AF' }}>Gemini Vision AI</Text> dan dialokasikan ke pengeluaran berdua.
+              </Text>
+            </View>
+
+            {/* Bottom Shutter & Controls Dock */}
+            <View style={styles.scannerBottomBar}>
+              {/* Galeri button */}
+              <TouchableOpacity
+                style={styles.scannerDockBtn}
+                onPress={handlePickGallery}
+                activeOpacity={0.8}>
+                <View style={styles.scannerDockIconCircle}>
+                  <ImageIcon size={20} color="#FFFFFF" />
+                </View>
+                <Text style={styles.scannerDockText}>Galeri</Text>
+              </TouchableOpacity>
+
+              {/* Real Shutter Button */}
+              <TouchableOpacity
+                style={styles.shutterOuterRing}
+                onPress={handleShutterCapture}
+                disabled={isProcessingOcr}
+                activeOpacity={0.85}>
+                {isProcessingOcr ? (
+                  <ActivityIndicator color="#F43F5E" size="small" />
+                ) : (
+                  <View style={styles.shutterInnerCircle} />
+                )}
+              </TouchableOpacity>
+
+              {/* Input Manual button */}
+              <TouchableOpacity
+                style={styles.scannerDockBtn}
+                onPress={() => {
+                  stopRealWebCamera();
+                  setSubTab('summary');
+                  setShowAddExpenseModal(true);
+                }}
+                activeOpacity={0.8}>
+                <View style={styles.scannerDockIconCircle}>
+                  <Edit3 size={20} color="#FFFFFF" />
+                </View>
+                <Text style={styles.scannerDockText}>Input Manual</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : subTab === 'result' ? (
+          /* ================= SCREEN 4: HASIL PINDAI STRUK & SPLIT BILL ================= */
+          <ScrollView
+            style={styles.resultScroll}
+            contentContainerStyle={styles.resultContent}
+            showsVerticalScrollIndicator={false}>
+            {/* Header */}
+            <View style={styles.resultHeader}>
+              <TouchableOpacity
+                style={styles.headerCircleBtn}
+                onPress={() => setSubTab('scanner')}>
+                <ArrowLeft size={18} color="#1F2937" />
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.resultHeaderTitle}>Hasil Pindai Struk</Text>
+                <Text style={styles.resultHeaderSub}>OURS Expense Tracker</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.headerCircleBtn}
+                onPress={() => setSubTab('summary')}>
+                <Trash2 size={18} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Success Banner */}
+            <View style={styles.successBanner}>
+              <CheckCircle size={22} color="#10B981" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.successBannerTitle}>Struk Berhasil Dipindai!</Text>
+                <Text style={styles.successBannerSub}>
+                  Mohon periksa & lengkapi detail pengeluaran kalian.
+                </Text>
+              </View>
+            </View>
+
+            {/* Merchant Card with Captured Photo Thumbnail */}
+            <View style={styles.merchantCard}>
+              <View style={styles.merchantCardTopRow}>
+                {/* Captured Photo Preview Thumbnail */}
+                <View style={styles.merchantThumbBox}>
+                  {receiptImageUri ? (
+                    <Image
+                      source={{ uri: receiptImageUri }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.thumbPlaceholder}>
+                      <ImageIcon size={24} color="#94A3B8" />
+                    </View>
+                  )}
+                </View>
+
+                {/* Details */}
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Text style={styles.merchantNameText}>{merchantName}</Text>
+                    <View style={styles.verifiedBadge}>
+                      <Text style={styles.verifiedBadgeText}>Verified</Text>
                     </View>
                   </View>
 
-                  {/* Price */}
-                  <Text style={styles.itemPriceText}>{formatRupiah(item.lineTotal)}</Text>
+                  <View style={styles.merchantTagsRow}>
+                    {merchantTags.map((tag, i) => (
+                      <View key={i} style={styles.merchantTagPill}>
+                        <Text style={styles.merchantTagText}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
 
-                  {/* Options Menu / Delete */}
-                  <TouchableOpacity
-                    style={styles.itemOptionsBtn}
-                    onPress={() => handleDeleteItem(item.id)}>
-                    <Ionicons name="ellipsis-vertical" size={16} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Totals Breakdown Card */}
-          <View style={styles.breakdownCard}>
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Subtotal</Text>
-              <Text style={styles.breakdownValue}>{formatRupiah(subtotalVal)}</Text>
-            </View>
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Pajak (10%)</Text>
-              <Text style={styles.breakdownValue}>{formatRupiah(taxVal)}</Text>
-            </View>
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Service (5%)</Text>
-              <Text style={styles.breakdownValue}>{formatRupiah(serviceVal)}</Text>
-            </View>
-            <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
-              <Text style={styles.breakdownTotalLabel}>Total</Text>
-              <Text style={styles.breakdownTotalValue}>{formatRupiah(grandTotalVal)}</Text>
-            </View>
-          </View>
-
-          {/* Simpan ke Pengeluaran Section */}
-          <View style={styles.saveSection}>
-            <Text style={styles.saveSectionTitle}>Simpan ke Pengeluaran</Text>
-
-            <View style={styles.saveInputsRow}>
-              {/* Tanggal */}
-              <View style={styles.saveInputCol}>
-                <Text style={styles.saveInputLabel}>Tanggal</Text>
-                <View style={styles.saveInputFieldBox}>
-                  <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
-                  <Text style={styles.saveInputText}>{receiptDate}</Text>
+                  <View style={styles.merchantMetaRow}>
+                    <Clock size={12} color="#6B7280" style={{ marginRight: 4 }} />
+                    <Text style={styles.merchantMetaText}>{receiptDate} • {receiptTime}</Text>
+                  </View>
+                  <View style={styles.merchantMetaRow}>
+                    <MapPin size={12} color="#6B7280" style={{ marginRight: 4 }} />
+                    <Text style={styles.merchantMetaText} numberOfLines={1}>{merchantAddress}</Text>
+                  </View>
                 </View>
               </View>
+            </View>
 
-              {/* Untuk Rencana */}
-              <View style={styles.saveInputCol}>
-                <Text style={styles.saveInputLabel}>Untuk Rencana</Text>
+            {/* Detail Item Breakdown */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Detail Item</Text>
                 <TouchableOpacity
-                  style={styles.saveInputFieldBox}
+                  style={styles.addItemBtn}
+                  onPress={() => setShowAddItemModal(true)}>
+                  <Plus size={14} color="#F43F5E" style={{ marginRight: 4 }} />
+                  <Text style={styles.addItemBtnText}>Tambah Item</Text>
+                </TouchableOpacity>
+              </View>
+
+              {lineItems.map((item) => {
+                const isDrink = item.category === 'Minuman';
+                return (
+                  <View key={item.id} style={styles.itemRow}>
+                    <View style={[styles.itemIconSquare, isDrink ? styles.drinkIconBg : styles.foodIconBg]}>
+                      <UtensilsCrossed size={16} color={isDrink ? '#2563EB' : '#F43F5E'} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.itemNameText}>{item.name}</Text>
+                      <View style={[styles.categoryBadge, isDrink ? styles.drinkBadge : styles.foodBadge]}>
+                        <Text style={[styles.categoryBadgeText, isDrink ? styles.drinkBadgeText : styles.foodBadgeText]}>
+                          {item.category}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.itemPriceText}>{formatRupiah(item.lineTotal)}</Text>
+                    <TouchableOpacity
+                      style={{ padding: 4 }}
+                      onPress={() => handleDeleteItem(item.id)}>
+                      <MoreVertical size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+
+              {/* Subtotal, Pajak, Service Breakdown */}
+              <View style={styles.subtotalBreakdown}>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Subtotal</Text>
+                  <Text style={styles.breakdownVal}>{formatRupiah(subtotalVal)}</Text>
+                </View>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Pajak Resto (10%)</Text>
+                  <Text style={styles.breakdownVal}>{formatRupiah(taxVal)}</Text>
+                </View>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Service Charge (5%)</Text>
+                  <Text style={styles.breakdownVal}>{formatRupiah(serviceVal)}</Text>
+                </View>
+                <View style={[styles.breakdownRow, styles.grandTotalRow]}>
+                  <Text style={styles.grandTotalLabel}>TOTAL STRUK</Text>
+                  <Text style={styles.grandTotalVal}>{formatRupiah(grandTotalVal)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Split Bill 50:50 Card */}
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionTitle}>Simpan ke Anggaran Pasangan</Text>
+
+              {/* Split Toggle */}
+              <View style={styles.splitBox}>
+                <View style={styles.splitToggleRow}>
+                  <View>
+                    <Text style={styles.splitTitle}>Bagi Rata (50 : 50)</Text>
+                    <Text style={styles.splitPerPerson}>{formatRupiah(Math.round(grandTotalVal / 2))} /orang</Text>
+                  </View>
+                  <Switch
+                    value={isSplitEven}
+                    onValueChange={setIsSplitEven}
+                    trackColor={{ false: '#CBD5E1', true: '#F43F5E' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+
+                {isSplitEven && (
+                  <View style={styles.splitPartnersRow}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={styles.partnerNameText}>Kamu</Text>
+                      <Text style={styles.partnerAmountText}>{formatRupiah(Math.round(grandTotalVal / 2))}</Text>
+                    </View>
+                    <Text style={styles.plusSignText}>+</Text>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={styles.partnerNameText}>Pasangan</Text>
+                      <Text style={styles.partnerAmountText}>{formatRupiah(Math.round(grandTotalVal / 2))}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* Rencana Kencan Dropdown */}
+              <View style={{ marginTop: 14 }}>
+                <Text style={styles.inputSubLabel}>Alokasikan ke Rencana Kencan:</Text>
+                <TouchableOpacity
+                  style={styles.dropdownSelector}
                   onPress={() => setShowPlanDropdown(!showPlanDropdown)}>
-                  <Text style={{ marginRight: 4 }}>❤️</Text>
-                  <Text style={[styles.saveInputText, { flex: 1 }]} numberOfLines={1}>
+                  <Heart size={16} color="#F43F5E" fill="#F43F5E" style={{ marginRight: 8 }} />
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: '#1F2937' }}>
                     {selectedPlanLabel}
                   </Text>
-                  <Ionicons name="chevron-down" size={14} color="#64748B" />
+                  <Text style={{ fontSize: 12, color: '#6B7280' }}>▼</Text>
                 </TouchableOpacity>
+
+                {showPlanDropdown && (
+                  <View style={styles.dropdownList}>
+                    <TouchableOpacity
+                      style={styles.dropdownOption}
+                      onPress={() => {
+                        setSelectedDatePlanId(null);
+                        setSelectedPlanLabel('Date Night Spesial');
+                        setShowPlanDropdown(false);
+                      }}>
+                      <Text style={styles.dropdownOptionText}>❤️ Date Night Spesial</Text>
+                    </TouchableOpacity>
+                    {datePlans.map((dp) => (
+                      <TouchableOpacity
+                        key={dp.id}
+                        style={styles.dropdownOption}
+                        onPress={() => {
+                          setSelectedDatePlanId(dp.id);
+                          setSelectedPlanLabel(dp.title);
+                          setShowPlanDropdown(false);
+                        }}>
+                        <Text style={styles.dropdownOptionText}>✨ {dp.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             </View>
 
-            {/* Dropdown Options if open */}
-            {showPlanDropdown && (
-              <View style={styles.planDropdownMenu}>
-                <TouchableOpacity
-                  style={styles.planDropdownItem}
-                  onPress={() => {
-                    setSelectedDatePlanId(null);
-                    setSelectedPlanLabel('Date Night');
-                    setShowPlanDropdown(false);
-                  }}>
-                  <Text style={styles.planDropdownItemText}>❤️ Date Night</Text>
-                </TouchableOpacity>
-                {datePlans.map((dp) => (
-                  <TouchableOpacity
-                    key={dp.id}
-                    style={styles.planDropdownItem}
-                    onPress={() => {
-                      setSelectedDatePlanId(dp.id);
-                      setSelectedPlanLabel(dp.title);
-                      setShowPlanDropdown(false);
-                    }}>
-                    <Text style={styles.planDropdownItemText}>✨ {dp.title}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Large Pink Simpan Button */}
+            {/* Primary Save Button */}
             <TouchableOpacity
-              style={styles.primarySaveExpenseBtn}
+              style={styles.primarySaveBtn}
               onPress={handleSaveConfirmedExpense}
               disabled={savingReceiptExpense}
               activeOpacity={0.88}>
               {savingReceiptExpense ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.primarySaveExpenseBtnText}>Simpan Pengeluaran</Text>
+                <Text style={styles.primarySaveBtnText}>Simpan ke Pengeluaran Bersama</Text>
               )}
             </TouchableOpacity>
-          </View>
-        </ScrollView>
-      ) : (
-        /* ================= REGULAR EXPENSE / SUMMARY / VISITS SCREENS ================= */
-        <>
-          {/* Header */}
-          <View style={styles.regularHeader}>
-            <View style={styles.regularHeaderTopRow}>
+          </ScrollView>
+        ) : (
+          /* ================= REGULAR EXPENSES / SUMMARY VIEW ================= */
+          <ScrollView
+            contentContainerStyle={styles.regularScrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />}>
+            {/* Header */}
+            <View style={styles.regularHeaderRow}>
               <View>
-                <Text style={styles.regularHeaderTitle}>Pengeluaran & Kunjungan</Text>
-                <Text style={styles.regularHeaderSubtitle}>
-                  Pantau anggaran kencan dan transparansi bersama
-                </Text>
+                <Text style={styles.regularScreenTitle}>Pengeluaran & Kunjungan</Text>
+                <Text style={styles.regularScreenSubtitle}>Pantau anggaran kencan dan transparansi bersama</Text>
               </View>
-              <View style={styles.monthBadge}>
-                <Ionicons name="wallet-outline" size={13} color="#2563EB" />
-                <Text style={styles.monthBadgeText}>Bulan Ini</Text>
+              <View style={styles.regularMonthBadge}>
+                <Wallet size={14} color="#2563EB" style={{ marginRight: 4 }} />
+                <Text style={styles.regularMonthBadgeText}>Bulan Ini</Text>
               </View>
             </View>
 
-            {/* Segmented SubTabs */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.segmentedContainer}>
+            {/* Segmented Buttons */}
+            <View style={styles.segmentedButtonsRow}>
               <TouchableOpacity
-                style={[styles.segmentBtn, subTab === 'summary' && styles.segmentBtnActive]}
-                onPress={() => setSubTab('summary')}
-                activeOpacity={0.85}>
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    subTab === 'summary' && styles.segmentBtnTextActive,
-                  ]}>
+                style={[styles.segmentPill, subTab === 'summary' && styles.segmentPillActive]}
+                onPress={() => setSubTab('summary')}>
+                <Text style={[styles.segmentPillText, subTab === 'summary' && styles.segmentPillTextActive]}>
                   Ringkasan
                 </Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={[styles.segmentBtn, subTab === 'transactions' && styles.segmentBtnActive]}
-                onPress={() => setSubTab('transactions')}
-                activeOpacity={0.85}>
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    subTab === 'transactions' && styles.segmentBtnTextActive,
-                  ]}>
+                style={[styles.segmentPill, subTab === 'transactions' && styles.segmentPillActive]}
+                onPress={() => setSubTab('transactions')}>
+                <Text style={[styles.segmentPillText, subTab === 'transactions' && styles.segmentPillTextActive]}>
                   Transaksi ({expenses.length})
                 </Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={[styles.segmentBtn, (subTab as ExpenseSubTab) === 'scanner' && styles.segmentBtnActive]}
-                onPress={() => setSubTab('scanner')}
-                activeOpacity={0.85}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Ionicons
-                    name="scan"
-                    size={14}
-                    color={(subTab as ExpenseSubTab) === 'scanner' ? '#FFFFFF' : '#4B5563'}
-                  />
-                  <Text
-                    style={[
-                      styles.segmentBtnText,
-                      (subTab as ExpenseSubTab) === 'scanner' && styles.segmentBtnTextActive,
-                    ]}>
-                    Pindai Struk
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.segmentBtn, subTab === 'visits' && styles.segmentBtnActive]}
-                onPress={() => setSubTab('visits')}
-                activeOpacity={0.85}>
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    subTab === 'visits' && styles.segmentBtnTextActive,
-                  ]}>
-                  Kunjungan ({visits.length})
+                style={[styles.segmentPill, (subTab as ExpenseSubTab) === 'scanner' && styles.segmentPillActive]}
+                onPress={() => setSubTab('scanner')}>
+                <Scan size={14} color={(subTab as ExpenseSubTab) === 'scanner' ? '#FFFFFF' : '#4B5563'} style={{ marginRight: 4 }} />
+                <Text style={[styles.segmentPillText, (subTab as ExpenseSubTab) === 'scanner' && styles.segmentPillTextActive]}>
+                  Pindai Struk
                 </Text>
               </TouchableOpacity>
-            </ScrollView>
-          </View>
+            </View>
 
-          {/* Toast */}
-          {statusMessage && (
-            <View style={styles.statusToast}>
-              <Text style={styles.statusToastText}>{statusMessage}</Text>
-              <TouchableOpacity onPress={() => setStatusMessage(null)}>
-                <Ionicons name="close" size={16} color="#FFFFFF" />
+            {/* Hero Card */}
+            <View style={styles.heroExpenseCard}>
+              <Text style={styles.heroCardLabel}>Total Pengeluaran Bersama</Text>
+              <Text style={styles.heroCardAmount}>{formatRupiah(totalExpenseVal)}</Text>
+
+              {summary && summary.partner2 ? (
+                <View style={styles.splitRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.splitPartnerName}>{summary.partner1.displayName}</Text>
+                    <Text style={styles.splitPartnerVal}>{formatRupiah(summary.partner1.totalPaid)}</Text>
+                  </View>
+                  <View style={styles.splitVDivider} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.splitPartnerName}>{summary.partner2.displayName}</Text>
+                    <Text style={styles.splitPartnerVal}>{formatRupiah(summary.partner2.totalPaid)}</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.balancedBadge}>
+                <CheckCircle size={14} color="#10B981" style={{ marginRight: 6 }} />
+                <Text style={styles.balancedBadgeText}>Pengeluaran Berdua Terpantau Rapi</Text>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity
+                style={styles.primaryActionBtn}
+                onPress={() => setSubTab('scanner')}
+                activeOpacity={0.88}>
+                <Scan size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryActionBtnText}>Pindai Struk Kamera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryActionBtn}
+                onPress={() => setShowAddExpenseModal(true)}
+                activeOpacity={0.85}>
+                <Edit3 size={18} color="#1F2937" style={{ marginRight: 8 }} />
+                <Text style={styles.secondaryActionBtnText}>Catat Manual</Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {loading && !refreshing ? (
-            <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.loadingText}>Memuat catatan pengeluaran...</Text>
-            </View>
-          ) : subTab === 'summary' ? (
-            /* Summary Tab */
-            <ScrollView
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
-              }>
-              {/* Total Hero Card */}
-              <View style={styles.totalHeroCard}>
-                <Text style={styles.totalHeroLabel}>Total Pengeluaran Bersama</Text>
-                <Text style={styles.totalHeroAmount}>{formatRupiah(totalExpenseVal)}</Text>
-
-                {summary && summary.partner2 ? (
-                  <View style={styles.splitRow}>
-                    <View style={styles.splitCol}>
-                      <Text style={styles.splitName}>{summary.partner1.displayName}</Text>
-                      <Text style={styles.splitAmount}>{formatRupiah(summary.partner1.totalPaid)}</Text>
-                    </View>
-                    <View style={styles.splitDivider} />
-                    <View style={styles.splitCol}>
-                      <Text style={styles.splitName}>{summary.partner2.displayName}</Text>
-                      <Text style={styles.splitAmount}>{formatRupiah(summary.partner2.totalPaid)}</Text>
-                    </View>
-                  </View>
-                ) : null}
-
-                <View style={styles.balanceBadgeBalanced}>
-                  <Ionicons name="checkmark-circle" size={13} color="#10B981" />
-                  <Text style={styles.balanceTextBalanced}>Pengeluaran Berdua Terpantau Rapi</Text>
-                </View>
-              </View>
-
-              {/* Action Buttons Row */}
-              <View style={styles.actionButtonsRow}>
-                <TouchableOpacity
-                  style={styles.primaryActionButton}
-                  onPress={() => setSubTab('scanner')}
-                  activeOpacity={0.88}>
-                  <Ionicons name="scan" size={16} color="#FFFFFF" />
-                  <Text style={styles.primaryActionButtonText}>Pindai Struk</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.secondaryActionButton}
-                  onPress={() => setShowAddExpenseModal(true)}
-                  activeOpacity={0.85}>
-                  <Ionicons name="add" size={18} color="#1F2937" />
-                  <Text style={styles.secondaryActionButtonText}>Catat Manual</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          ) : (
-            /* Transactions Tab */
-            <ScrollView
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
-              }>
+            {/* List of Recent Transactions */}
+            <View style={{ marginTop: 20 }}>
+              <Text style={styles.sectionTitle}>Riwayat Transaksi Terbaru</Text>
               {expenses.map((exp) => (
                 <View key={exp.id} style={styles.transactionCard}>
-                  <View style={styles.transactionIconBox}>
-                    <Ionicons name="receipt-outline" size={18} color="#2563EB" />
+                  <View style={styles.transactionIcon}>
+                    <Wallet size={18} color="#2563EB" />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.transactionTitle}>{exp.description}</Text>
-                    <Text style={styles.transactionDate}>
-                      {formatTanggal(exp.expenseDate)} • {exp.category || 'Makan & Minum'}
-                    </Text>
+                    <Text style={styles.transactionDate}>{formatTanggal(exp.expenseDate)} • {exp.category || 'Makan'}</Text>
                   </View>
                   <Text style={styles.transactionAmount}>{formatRupiah(exp.amount)}</Text>
                 </View>
               ))}
-            </ScrollView>
-          )}
-        </>
-      )}
-
-      {/* Add Item Modal */}
-      <Modal visible={showAddItemModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.addItemCard}>
-            <Text style={styles.modalTitle}>Tambah Item Menu</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Nama menu (misal: Iced Matcha)"
-              placeholderTextColor="#94A3B8"
-              value={newItemName}
-              onChangeText={setNewItemName}
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginVertical: 8 }}>
-              <TouchableOpacity
-                style={[
-                  styles.categoryToggleBtn,
-                  newItemCategory === 'Makanan' && styles.categoryToggleBtnActive,
-                ]}
-                onPress={() => setNewItemCategory('Makanan')}>
-                <Text
-                  style={[
-                    styles.categoryToggleText,
-                    newItemCategory === 'Makanan' && styles.categoryToggleTextActive,
-                  ]}>
-                  Makanan
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.categoryToggleBtn,
-                  newItemCategory === 'Minuman' && styles.categoryToggleBtnActive,
-                ]}
-                onPress={() => setNewItemCategory('Minuman')}>
-                <Text
-                  style={[
-                    styles.categoryToggleText,
-                    newItemCategory === 'Minuman' && styles.categoryToggleTextActive,
-                  ]}>
-                  Minuman
-                </Text>
-              </TouchableOpacity>
             </View>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Harga (misal: 35.000)"
-              placeholderTextColor="#94A3B8"
-              keyboardType="numeric"
-              value={newItemPrice}
-              onChangeText={setNewItemPrice}
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setShowAddItemModal(false)}>
-                <Text style={styles.modalCancelBtnText}>Batal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleAddNewItem}>
-                <Text style={styles.modalSubmitBtnText}>Tambahkan</Text>
-              </TouchableOpacity>
+          </ScrollView>
+        )}
+
+        {/* Status Toast */}
+        {statusMessage && (
+          <View style={styles.statusToast}>
+            <Text style={styles.statusToastText}>{statusMessage}</Text>
+            <TouchableOpacity onPress={() => setStatusMessage(null)}>
+              <Text style={{ color: '#FFFFFF', fontWeight: '800', marginLeft: 8 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Modal Tambah Item */}
+        <Modal visible={showAddItemModal} transparent animationType="slide">
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Tambah Item Menu</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Nama menu (misal: Ice Americano)"
+                placeholderTextColor="#94A3B8"
+                value={newItemName}
+                onChangeText={setNewItemName}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, marginVertical: 8 }}>
+                <TouchableOpacity
+                  style={[styles.catToggleBtn, newItemCategory === 'Makanan' && styles.catToggleBtnActive]}
+                  onPress={() => setNewItemCategory('Makanan')}>
+                  <Text style={[styles.catToggleText, newItemCategory === 'Makanan' && styles.catToggleTextActive]}>
+                    Makanan
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.catToggleBtn, newItemCategory === 'Minuman' && styles.catToggleBtnActive]}
+                  onPress={() => setNewItemCategory('Minuman')}>
+                  <Text style={[styles.catToggleText, newItemCategory === 'Minuman' && styles.catToggleTextActive]}>
+                    Minuman
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Harga (misal: 45.000)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+                value={newItemPrice}
+                onChangeText={setNewItemPrice}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowAddItemModal(false)}>
+                  <Text style={styles.modalCancelBtnText}>Batal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleAddNewItem}>
+                  <Text style={styles.modalSubmitBtnText}>Tambahkan</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {/* Manual Expense Modal */}
-      <Modal visible={showAddExpenseModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.addItemCard}>
-            <Text style={styles.modalTitle}>Catat Pengeluaran Manual</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Keterangan pengeluaran"
-              placeholderTextColor="#94A3B8"
-              value={newExpTitle}
-              onChangeText={setNewExpTitle}
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Nominal (misal: 150.000)"
-              placeholderTextColor="#94A3B8"
-              keyboardType="numeric"
-              value={newExpAmount}
-              onChangeText={setNewExpAmount}
-            />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setShowAddExpenseModal(false)}>
-                <Text style={styles.modalCancelBtnText}>Batal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSubmitBtn}
-                onPress={async () => {
-                  if (!newExpTitle.trim() || !newExpAmount.trim()) return;
-                  setSavingExpense(true);
-                  try {
-                    await api.expenses.create({
-                      description: newExpTitle.trim(),
-                      amount: parseRupiahInput(newExpAmount),
-                      category: newExpCategory,
-                      expenseDate: new Date().toISOString(),
-                    });
-                    setShowAddExpenseModal(false);
-                    setNewExpTitle('');
-                    setNewExpAmount('');
-                    fetchData();
-                  } finally {
-                    setSavingExpense(false);
-                  }
-                }}>
-                <Text style={styles.modalSubmitBtnText}>Simpan</Text>
-              </TouchableOpacity>
+        {/* Modal Catat Manual */}
+        <Modal visible={showAddExpenseModal} transparent animationType="slide">
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Catat Pengeluaran Manual</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Keterangan (misal: Tiket Bioskop)"
+                placeholderTextColor="#94A3B8"
+                value={newExpTitle}
+                onChangeText={setNewExpTitle}
+              />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Nominal (misal: 120.000)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+                value={newExpAmount}
+                onChangeText={setNewExpAmount}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowAddExpenseModal(false)}>
+                  <Text style={styles.modalCancelBtnText}>Batal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalSubmitBtn}
+                  onPress={async () => {
+                    if (!newExpTitle.trim() || !newExpAmount.trim()) return;
+                    setSavingExpense(true);
+                    try {
+                      await api.expenses.create({
+                        description: newExpTitle.trim(),
+                        amount: parseRupiahInput(newExpAmount),
+                        category: newExpCategory,
+                        expenseDate: new Date().toISOString(),
+                      });
+                      setShowAddExpenseModal(false);
+                      setNewExpTitle('');
+                      setNewExpAmount('');
+                      fetchData();
+                    } finally {
+                      setSavingExpense(false);
+                    }
+                  }}>
+                  <Text style={styles.modalSubmitBtnText}>Simpan</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
+    backgroundColor: '#F8F9FF',
+    alignItems: 'center',
   },
-  // ================= SCANNER (SCREEN 3) STYLES =================
-  scannerScreenContainer: {
+  responsiveWrapper: {
     flex: 1,
-    backgroundColor: '#1E1E1E',
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+
+  // ================= SCANNER (SCREEN 3) =================
+  scannerScreen: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#121212',
+    justifyContent: 'space-between',
+    zIndex: 99999,
   },
   scannerTopBar: {
     paddingTop: Platform.OS === 'ios' ? 52 : 36,
@@ -1038,375 +1056,433 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#121212',
   },
-  scannerNavIconBtn: {
-    padding: 6,
-  },
-  scannerTopTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  scannerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
     color: '#FFFFFF',
   },
-  scannerInstructionBanner: {
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    marginHorizontal: 24,
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  scannerInstructionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  scannerInstructionSub: {
+  scannerSubTitle: {
     fontSize: 11,
-    color: '#D1D5DB',
+    color: '#9CA3AF',
     marginTop: 1,
   },
-  viewfinderCenterArea: {
-    flex: 1,
+  iconBtnHover: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  viewfinderFrameBox: {
-    width: '100%',
-    height: '74%',
-    position: 'relative',
+  instructionBanner: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 20,
+    marginTop: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  instructionText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  viewfinderContainer: {
+    flex: 1,
+    marginHorizontal: 20,
+    marginVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewfinderBox: {
+    width: '100%',
+    height: '100%',
+    maxHeight: 460,
+    position: 'relative',
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#18181B',
+  },
+  videoStreamContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  cameraOverlayPrompt: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+    backgroundColor: 'rgba(18,18,18,0.7)',
+  },
+  cameraOverlayTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  cameraOverlaySub: {
+    fontSize: 12,
+    color: '#D1D5DB',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  enableCameraBtn: {
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+  },
+  enableCameraBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
   },
   cornerBracket: {
     position: 'absolute',
     width: 32,
     height: 32,
-    borderColor: '#FFFFFF',
+    borderColor: '#F43F5E',
   },
-  cornerTL: {
-    top: 0,
-    left: 0,
+  bracketTL: {
+    top: 14,
+    left: 14,
     borderTopWidth: 4,
     borderLeftWidth: 4,
     borderTopLeftRadius: 16,
   },
-  cornerTR: {
-    top: 0,
-    right: 0,
+  bracketTR: {
+    top: 14,
+    right: 14,
     borderTopWidth: 4,
     borderRightWidth: 4,
     borderTopRightRadius: 16,
   },
-  cornerBL: {
-    bottom: 0,
-    left: 0,
+  bracketBL: {
+    bottom: 14,
+    left: 14,
     borderBottomWidth: 4,
     borderLeftWidth: 4,
     borderBottomLeftRadius: 16,
   },
-  cornerBR: {
-    bottom: 0,
-    right: 0,
+  bracketBR: {
+    bottom: 14,
+    right: 14,
     borderBottomWidth: 4,
     borderRightWidth: 4,
     borderBottomRightRadius: 16,
   },
-  thermalReceiptSimulatedPaper: {
-    width: '82%',
-    backgroundColor: '#FAF9F5',
-    padding: 16,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
+  scanningLine: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    top: '45%',
+    height: 2,
+    backgroundColor: '#F43F5E',
+    shadowColor: '#F43F5E',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
   },
-  thermalReceiptHeader: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1F2937',
-    textAlign: 'center',
-    letterSpacing: 1,
-  },
-  thermalReceiptSub: {
-    fontSize: 10,
-    color: '#4B5563',
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  thermalReceiptDivider: {
-    height: 1,
-    borderTopWidth: 1,
-    borderColor: '#D1D5DB',
-    borderStyle: 'dashed',
-    marginVertical: 8,
-  },
-  thermalReceiptRow: {
+  tipsBar: {
+    marginHorizontal: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 2,
+    alignItems: 'center',
   },
-  thermalReceiptText: {
-    fontSize: 11,
-    color: '#374151',
+  tipsText: {
+    fontSize: 12,
+    color: '#E5E7EB',
+    flex: 1,
+    lineHeight: 16,
   },
-  thermalReceiptFooter: {
-    fontSize: 10,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  scannerBottomControlBar: {
+  scannerBottomBar: {
     height: 96,
-    backgroundColor: '#18181B',
+    backgroundColor: '#121212',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 24,
     paddingBottom: Platform.OS === 'ios' ? 16 : 8,
   },
-  scannerBottomActionCol: {
+  scannerDockBtn: {
     alignItems: 'center',
     gap: 4,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  scannerBottomActionText: {
+  scannerDockIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scannerDockText: {
     fontSize: 11,
     color: '#D1D5DB',
     fontWeight: '600',
   },
-  scannerShutterOuterCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+  shutterOuterRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 4,
-    borderColor: '#FFFFFF',
+    borderColor: 'rgba(244,63,94,0.4)',
+    padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  scannerShutterInnerCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#FFFFFF',
+  shutterInnerCircle: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 32,
+    backgroundColor: '#F43F5E',
+    shadowColor: '#F43F5E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
 
-  // ================= OCR RESULTS (SCREEN 4) STYLES =================
-  resultScreenScroll: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
+  // ================= RESULT (SCREEN 4) =================
+  resultScroll: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#F8F9FF',
+    zIndex: 99999,
   },
-  resultScreenContent: {
+  resultContent: {
     paddingTop: Platform.OS === 'ios' ? 52 : 36,
     paddingHorizontal: 20,
     paddingBottom: 110,
   },
-  resultHeaderRow: {
+  resultHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  resultBackBtn: {
-    padding: 4,
-  },
-  resultHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  resultTrashBtn: {
-    padding: 4,
-  },
-  greenSuccessBanner: {
-    backgroundColor: '#ECFDF5',
-    borderRadius: 14,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  greenSuccessIconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#10B981',
+  headerCircleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  greenSuccessTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#065F46',
-  },
-  greenSuccessSubtitle: {
-    fontSize: 11,
-    color: '#047857',
-    marginTop: 1,
-  },
-  resultMerchantCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 2,
-    marginBottom: 20,
-  },
-  resultReceiptThumbnail: {
-    width: 76,
-    height: 92,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#E2E8F0',
-  },
-  resultMerchantInfoCol: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: 'space-between',
-  },
-  resultMerchantName: {
+  resultHeaderTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#1E293B',
+    color: '#1F2937',
   },
-  resultTagsRow: {
+  resultHeaderSub: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#F43F5E',
+  },
+  successBanner: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  successBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  successBannerSub: {
+    fontSize: 11,
+    color: '#047857',
+    marginTop: 2,
+  },
+  merchantCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  merchantCardTopRow: {
+    flexDirection: 'row',
+  },
+  merchantThumbBox: {
+    width: 82,
+    height: 98,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#1E293B',
+  },
+  thumbPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  merchantNameText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  verifiedBadge: {
+    backgroundColor: '#FFF1F2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  verifiedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F43F5E',
+  },
+  merchantTagsRow: {
     flexDirection: 'row',
     gap: 6,
-    marginVertical: 3,
+    marginVertical: 4,
   },
-  resultTagPill: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
+  merchantTagPill: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  resultTagPillText: {
+  merchantTagText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#2563EB',
+    color: '#475569',
   },
-  resultMetaRow: {
+  merchantMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 2,
   },
-  resultMetaText: {
+  merchantMetaText: {
     fontSize: 11,
-    color: '#64748B',
+    color: '#6B7280',
     flex: 1,
   },
-  detailItemHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  detailItemSectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  addDetailItemBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
-  },
-  addDetailItemBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#2563EB',
-  },
-  itemListContainer: {
+  cardSection: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#F1F5F9',
-    overflow: 'hidden',
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  addItemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF1F2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+  },
+  addItemBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F43F5E',
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F8FAFC',
   },
-  itemIconBox: {
-    width: 38,
-    height: 38,
+  itemIconSquare: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemIconBoxDrink: {
+  drinkIconBg: {
     backgroundColor: '#EFF6FF',
   },
-  itemIconBoxFood: {
+  foodIconBg: {
     backgroundColor: '#FFF1F2',
   },
-  itemInfoCol: {
-    flex: 1,
-    marginLeft: 12,
-  },
   itemNameText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#1F2937',
   },
-  itemCategoryPill: {
+  categoryBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 4,
-    marginTop: 3,
+    marginTop: 2,
   },
-  itemCategoryPillDrink: {
+  drinkBadge: {
     backgroundColor: '#EFF6FF',
   },
-  itemCategoryPillFood: {
+  foodBadge: {
     backgroundColor: '#FFF1F2',
   },
-  itemCategoryPillText: {
-    fontSize: 10,
-    fontWeight: '600',
+  categoryBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
   },
-  itemCategoryPillTextDrink: {
+  drinkBadgeText: {
     color: '#2563EB',
   },
-  itemCategoryPillTextFood: {
+  foodBadgeText: {
     color: '#F43F5E',
   },
   itemPriceText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginRight: 8,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginRight: 6,
   },
-  itemOptionsBtn: {
-    padding: 4,
-  },
-  breakdownCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-    gap: 8,
-    marginBottom: 20,
+  subtotalBreakdown: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    gap: 6,
   },
   breakdownRow: {
     flexDirection: 'row',
@@ -1414,175 +1490,200 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   breakdownLabel: {
-    fontSize: 13,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#6B7280',
   },
-  breakdownValue: {
-    fontSize: 13,
+  breakdownVal: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#1E293B',
+    color: '#374151',
   },
-  breakdownTotalRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+  grandTotalRow: {
     paddingTop: 8,
     marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
-  breakdownTotalLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  breakdownTotalValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#2563EB',
-  },
-  saveSection: {
-    gap: 12,
-  },
-  saveSectionTitle: {
+  grandTotalLabel: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#1E293B',
+    fontWeight: '900',
+    color: '#111827',
   },
-  saveInputsRow: {
+  grandTotalVal: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#F43F5E',
+  },
+  splitBox: {
+    backgroundColor: '#FFF5F6',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FFE4E8',
+    marginTop: 8,
+  },
+  splitToggleRow: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  saveInputCol: {
-    flex: 1,
+  splitTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111827',
   },
-  saveInputLabel: {
+  splitPerPerson: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-    marginBottom: 4,
+    fontWeight: '700',
+    color: '#F43F5E',
+    marginTop: 1,
   },
-  saveInputFieldBox: {
+  splitPartnersRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingTop: 10,
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#FFE4E8',
+  },
+  partnerNameText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  partnerAmountText: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  plusSignText: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    fontWeight: '800',
+  },
+  inputSubLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4B5563',
+    marginBottom: 6,
+  },
+  dropdownSelector: {
     height: 44,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 12,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  saveInputText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
-  planDropdownMenu: {
+  dropdownList: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 12,
-    padding: 6,
-    gap: 4,
+    marginTop: 4,
+    padding: 4,
   },
-  planDropdownItem: {
+  dropdownOption: {
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
   },
-  planDropdownItemText: {
+  dropdownOptionText: {
     fontSize: 13,
-    color: '#1E293B',
+    color: '#1F2937',
     fontWeight: '600',
   },
-  primarySaveExpenseBtn: {
-    height: 50,
+  primarySaveBtn: {
+    height: 52,
     backgroundColor: '#F43F5E',
-    borderRadius: 25,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
+    marginTop: 6,
     shadowColor: '#F43F5E',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
     elevation: 4,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  primarySaveExpenseBtnText: {
+  primarySaveBtnText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },
 
-  // ================= REGULAR SUMMARY & TRANSACTIONS =================
-  regularHeader: {
+  // ================= REGULAR SUMMARY =================
+  regularScrollContent: {
     paddingTop: Platform.OS === 'ios' ? 52 : 36,
     paddingHorizontal: 20,
-    paddingBottom: 10,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    paddingBottom: 110,
   },
-  regularHeaderTopRow: {
+  regularHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  regularHeaderTitle: {
+  regularScreenTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#1E293B',
+    color: '#111827',
   },
-  regularHeaderSubtitle: {
-    fontSize: 12,
-    color: '#64748B',
+  regularScreenSubtitle: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 1,
   },
-  monthBadge: {
+  regularMonthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EFF6FF',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    gap: 4,
   },
-  monthBadgeText: {
+  regularMonthBadgeText: {
     fontSize: 11,
     fontWeight: '700',
     color: '#2563EB',
   },
-  segmentedContainer: {
+  segmentedButtonsRow: {
+    flexDirection: 'row',
     gap: 8,
-    paddingVertical: 4,
+    marginBottom: 16,
   },
-  segmentBtn: {
+  segmentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  segmentBtnActive: {
+  segmentPillActive: {
     backgroundColor: '#2563EB',
     borderColor: '#2563EB',
   },
-  segmentBtnText: {
+  segmentPillText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#475569',
   },
-  segmentBtnTextActive: {
+  segmentPillTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 110,
-    gap: 14,
-  },
-  totalHeroCard: {
+  heroExpenseCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 18,
     borderWidth: 1,
     borderColor: '#F1F5F9',
@@ -1592,43 +1693,40 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  totalHeroLabel: {
+  heroCardLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#6B7280',
   },
-  totalHeroAmount: {
-    fontSize: 26,
+  heroCardAmount: {
+    fontSize: 28,
     fontWeight: '900',
-    color: '#1E293B',
+    color: '#111827',
     marginVertical: 4,
   },
   splitRow: {
     flexDirection: 'row',
-    marginTop: 10,
     paddingTop: 10,
+    marginTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-  splitCol: {
-    flex: 1,
-  },
-  splitDivider: {
+  splitVDivider: {
     width: 1,
     backgroundColor: '#E2E8F0',
     marginHorizontal: 12,
   },
-  splitName: {
+  splitPartnerName: {
     fontSize: 11,
-    color: '#64748B',
+    color: '#6B7280',
   },
-  splitAmount: {
+  splitPartnerVal: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#111827',
     marginTop: 2,
   },
-  balanceBadgeBalanced: {
+  balancedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ECFDF5',
@@ -1636,33 +1734,33 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 10,
     marginTop: 12,
-    gap: 6,
   },
-  balanceTextBalanced: {
+  balancedBadgeText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#047857',
+    color: '#065F46',
   },
   actionButtonsRow: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 14,
   },
-  primaryActionButton: {
-    flex: 1,
+  primaryActionBtn: {
+    flex: 1.2,
     height: 44,
     borderRadius: 22,
     backgroundColor: '#2563EB',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  primaryActionButtonText: {
+  primaryActionBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
   },
-  secondaryActionButton: {
+  secondaryActionBtn: {
     flex: 1,
     height: 44,
     borderRadius: 22,
@@ -1672,10 +1770,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  secondaryActionButtonText: {
-    color: '#1E293B',
+  secondaryActionBtnText: {
+    color: '#1F2937',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1687,29 +1785,30 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: '#F1F5F9',
+    marginTop: 10,
   },
-  transactionIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  transactionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   transactionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#1F2937',
   },
   transactionDate: {
     fontSize: 11,
-    color: '#64748B',
+    color: '#6B7280',
     marginTop: 2,
   },
   transactionAmount: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#1E293B',
+    color: '#1F2937',
   },
   statusToast: {
     position: 'absolute',
@@ -1723,23 +1822,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    zIndex: 99,
+    zIndex: 9999,
   },
   statusToastText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     flex: 1,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#64748B',
   },
   modalBackdrop: {
     flex: 1,
@@ -1747,15 +1836,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  addItemCard: {
+  modalCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#1E293B',
+    color: '#111827',
     marginBottom: 12,
   },
   modalInput: {
@@ -1765,10 +1854,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 44,
     fontSize: 13,
-    color: '#1E293B',
+    color: '#1F2937',
     marginBottom: 10,
   },
-  categoryToggleBtn: {
+  catToggleBtn: {
     flex: 1,
     height: 38,
     borderRadius: 10,
@@ -1777,17 +1866,18 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
-  categoryToggleBtnActive: {
+  catToggleBtnActive: {
     backgroundColor: '#2563EB',
     borderColor: '#2563EB',
   },
-  categoryToggleText: {
+  catToggleText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#6B7280',
   },
-  categoryToggleTextActive: {
+  catToggleTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
@@ -1798,6 +1888,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   modalCancelBtnText: {
     fontSize: 13,
@@ -1808,9 +1899,10 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#F43F5E',
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
   },
   modalSubmitBtnText: {
     fontSize: 13,

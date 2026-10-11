@@ -616,6 +616,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAF9F6',
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 52 : 36,
