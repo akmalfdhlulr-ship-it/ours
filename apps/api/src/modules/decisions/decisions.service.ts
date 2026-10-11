@@ -92,15 +92,19 @@ export class DecisionsService {
 
       let maxVotes = -1;
       let winningIdx = -1;
+      let isTie = false;
       for (let i = 0; i < voteCounts.length; i++) {
         if (voteCounts[i] > maxVotes) {
           maxVotes = voteCounts[i];
           winningIdx = i;
+          isTie = false;
+        } else if (voteCounts[i] === maxVotes && maxVotes > 0) {
+          isTie = true;
         }
       }
 
       poll.status = 'RESOLVED';
-      poll.winnerOptionIndex = winningIdx;
+      poll.winnerOptionIndex = isTie ? undefined : winningIdx;
     }
 
     this.polls.set(poll.id, poll);

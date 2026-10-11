@@ -43,6 +43,7 @@ export default function HomeTabScreen() {
   const [showSparkModal, setShowSparkModal] = useState(false);
   const [sparkAnswer, setSparkAnswer] = useState('');
   const [sparkSubmitted, setSparkSubmitted] = useState(false);
+  const [submittingSpark, setSubmittingSpark] = useState(false);
 
   // Wrapped modal state
   const [showWrappedModal, setShowWrappedModal] = useState(false);
@@ -58,7 +59,13 @@ export default function HomeTabScreen() {
         api.ai.insights().catch(() => []),
       ]);
       setDashboard(dashRes);
-      if (sparkRes) setDailySpark(sparkRes);
+      if (sparkRes) {
+        setDailySpark(sparkRes);
+        if (sparkRes.myCompleted) {
+          setSparkSubmitted(true);
+          if (sparkRes.myAnswer) setSparkAnswer(sparkRes.myAnswer);
+        }
+      }
       if (insightsRes) setAiInsights(insightsRes);
     } catch (err: any) {
       setError(err?.message || 'Gagal memuat beranda pasangan');
@@ -91,9 +98,18 @@ export default function HomeTabScreen() {
   };
 
   const handleSparkSubmit = async () => {
-    if (!sparkAnswer.trim()) return;
-    setSparkSubmitted(true);
-    setShowSparkModal(false);
+    if (!sparkAnswer.trim() || submittingSpark) return;
+    setSubmittingSpark(true);
+    try {
+      const res = await api.games.answerDailySpark({ answer: sparkAnswer.trim() });
+      setDailySpark(res);
+      setSparkSubmitted(true);
+      setShowSparkModal(false);
+    } catch (err: any) {
+      setError(err?.message || 'Gagal mengirim jawaban percikan harian');
+    } finally {
+      setSubmittingSpark(false);
+    }
   };
 
   if (loading && !dashboard) {
@@ -334,15 +350,63 @@ export default function HomeTabScreen() {
             <Text style={styles.sparkDateText}>{formatTanggal(dailySpark.date)}</Text>
           </View>
           <Text style={styles.sparkQuestionText}>{dailySpark.question}</Text>
-          <TouchableOpacity
-            style={styles.sparkCTAButton}
-            onPress={() => setShowSparkModal(true)}
-            activeOpacity={0.85}>
-            <Text style={styles.sparkCTAButtonText}>
-              {sparkSubmitted ? '✓ Jawaban Telah Dibagikan' : 'Bagikan Jawabanmu'}
-            </Text>
-            <Ionicons name="chatbubble-ellipses" size={15} color="#FFFFFF" />
-          </TouchableOpacity>
+
+          {dailySpark.revealed ? (
+            /* KEDUA JAWABAN TERUNGKAP */
+            <View style={styles.sparkRevealedContainer}>
+              <View style={styles.sparkMutualBadge}>
+                <Ionicons name="heart" size={14} color="#E11D48" />
+                <Text style={styles.sparkMutualBadgeText}>Kedua Jawaban Terungkap Bersama! ❤️</Text>
+              </View>
+
+              <View style={styles.sparkAnswerRow}>
+                <View style={styles.sparkAnswerBoxMe}>
+                  <Text style={styles.sparkAnswerAuthorText}>{myName || 'Kamu'}:</Text>
+                  <Text style={styles.sparkAnswerContentText}>"{dailySpark.myAnswer}"</Text>
+                </View>
+
+                <View style={styles.sparkAnswerBoxPartner}>
+                  <Text style={styles.sparkAnswerAuthorText}>{partnerName || 'Pasangan'}:</Text>
+                  <Text style={styles.sparkAnswerContentText}>"{dailySpark.partnerAnswer}"</Text>
+                </View>
+              </View>
+            </View>
+          ) : dailySpark.myCompleted ? (
+            /* MENUNGGU PASANGAN */
+            <View style={styles.sparkWaitingContainer}>
+              <View style={styles.sparkAnswerBoxMe}>
+                <Text style={styles.sparkAnswerAuthorText}>Jawabanmu:</Text>
+                <Text style={styles.sparkAnswerContentText}>"{dailySpark.myAnswer}"</Text>
+              </View>
+              <View style={styles.sparkLockStatusRow}>
+                <Ionicons name="lock-closed" size={14} color="#D97706" />
+                <Text style={styles.sparkLockStatusText}>
+                  Menunggu pasanganmu menjawab untuk membuka kedua jawaban berdua! 💌
+                </Text>
+              </View>
+            </View>
+          ) : (
+            /* BELUM MENJAWAB */
+            <View>
+              {dailySpark.partnerCompleted && (
+                <View style={styles.sparkPartnerReadyBanner}>
+                  <Ionicons name="notifications" size={13} color="#2563EB" />
+                  <Text style={styles.sparkPartnerReadyText}>
+                    {partnerName || 'Pasanganmu'} sudah menjawab! Jawab sekarang untuk membuka rahasianya.
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.sparkCTAButton}
+                onPress={() => setShowSparkModal(true)}
+                activeOpacity={0.85}>
+                <Text style={styles.sparkCTAButtonText}>
+                  {dailySpark.partnerCompleted ? 'Jawab & Buka Bersama' : 'Bagikan Jawabanmu'}
+                </Text>
+                <Ionicons name="chatbubble-ellipses" size={15} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
 
@@ -369,8 +433,13 @@ export default function HomeTabScreen() {
             <TouchableOpacity
               style={styles.modalSubmitButton}
               onPress={handleSparkSubmit}
+              disabled={submittingSpark}
               activeOpacity={0.88}>
-              <Text style={styles.modalSubmitButtonText}>Kirim Jawaban</Text>
+              {submittingSpark ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.modalSubmitButtonText}>Kirim Jawaban</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -813,6 +882,89 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  sparkRevealedContainer: {
+    marginTop: 4,
+    gap: 8,
+  },
+  sparkMutualBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFE4E6',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  sparkMutualBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E11D48',
+  },
+  sparkAnswerRow: {
+    gap: 8,
+  },
+  sparkAnswerBoxMe: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#0284C7',
+  },
+  sparkAnswerBoxPartner: {
+    backgroundColor: '#FFF1F2',
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F43F5E',
+  },
+  sparkAnswerAuthorText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#374151',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  sparkAnswerContentText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: '#1F2937',
+    lineHeight: 18,
+  },
+  sparkWaitingContainer: {
+    gap: 8,
+  },
+  sparkLockStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  sparkLockStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B45309',
+    flex: 1,
+  },
+  sparkPartnerReadyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  sparkPartnerReadyText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1D4ED8',
+    flex: 1,
   },
   // Modals
   modalBackdrop: {

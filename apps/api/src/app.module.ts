@@ -3,7 +3,6 @@ import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { EmailModule } from './infrastructure/email/email.module';
-import { PlacesModule as InfraPlacesModule } from './infrastructure/places/places.module';
 import { NotificationsModule } from './infrastructure/notifications/notifications.module';
 import { QueueModule } from './infrastructure/queue/queue.module';
 import { HealthModule } from './modules/health/health.module';
@@ -38,7 +37,6 @@ import { AppController } from './app.controller';
     DatabaseModule,
     StorageModule,
     EmailModule,
-    InfraPlacesModule,
     NotificationsModule,
     QueueModule,
     HealthModule,

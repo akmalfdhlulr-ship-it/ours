@@ -1,14 +1,30 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { DailySparkQuestionDto, QuizSessionDto, CreateQuizSessionDto, SubmitQuizAnswersDto, QuizQuestionDto } from '@ours/contracts';
+import {
+  DailySparkQuestionDto,
+  SubmitDailySparkAnswerDto,
+  QuizSessionDto,
+  CreateQuizSessionDto,
+  SubmitQuizAnswersDto,
+  QuizQuestionDto,
+} from '@ours/contracts';
 import { randomUUID } from 'crypto';
+import { DurableStore } from '../../common/persistence/durable-store';
 
 interface StoredQuizSession {
   id: string;
   coupleSpaceId: string;
   title: string;
   questions: QuizQuestionDto[];
-  userAnswers: Map<string, Record<string, string>>;
-  createdAt: Date;
+  userAnswers: Record<string, Record<string, string>>;
+  createdAt: string;
+}
+
+interface StoredDailySparkAnswer {
+  id: string;
+  coupleSpaceId: string;
+  date: string;
+  userAnswers: Record<string, string>;
+  updatedAt: string;
 }
 
 const DAILY_SPARK_QUESTIONS = [
@@ -26,21 +42,91 @@ const DAILY_SPARK_QUESTIONS = [
 
 @Injectable()
 export class GamesService {
-  private sessions = new Map<string, StoredQuizSession>();
+  private sessions = new DurableStore<StoredQuizSession>('quiz_sessions');
+  private dailySparks = new DurableStore<StoredDailySparkAnswer>('daily_sparks');
 
-  getDailySpark(): DailySparkQuestionDto {
+  getDailySpark(coupleSpaceId?: string, currentUserId?: string): DailySparkQuestionDto {
     const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10);
     const dayOfYear = Math.floor(
       (today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24),
     );
     const index = Math.abs(dayOfYear) % DAILY_SPARK_QUESTIONS.length;
 
-    return {
-      id: `spark-${today.toISOString().slice(0, 10)}`,
+    const baseDto: DailySparkQuestionDto = {
+      id: `spark-${dateStr}`,
       question: DAILY_SPARK_QUESTIONS[index],
       category: 'KEDEKATAN & IKATAN HATI',
-      date: today.toISOString().slice(0, 10),
+      date: dateStr,
+      myAnswer: null,
+      partnerAnswer: null,
+      revealed: false,
+      myCompleted: false,
+      partnerCompleted: false,
     };
+
+    if (!coupleSpaceId || !currentUserId) {
+      return baseDto;
+    }
+
+    const sparkRecordId = `${coupleSpaceId}_${dateStr}`;
+    const record = this.dailySparks.get(sparkRecordId);
+    if (!record || !record.userAnswers) {
+      return baseDto;
+    }
+
+    const myAnswer = record.userAnswers[currentUserId] || null;
+    const userIds = Object.keys(record.userAnswers);
+    const partnerId = userIds.find((uid) => uid !== currentUserId);
+    const partnerAnswer = partnerId ? record.userAnswers[partnerId] : null;
+
+    const myCompleted = !!myAnswer;
+    const partnerCompleted = !!partnerAnswer;
+    const revealed = myCompleted && partnerCompleted;
+
+    return {
+      ...baseDto,
+      myAnswer,
+      partnerAnswer: revealed ? partnerAnswer : null,
+      revealed,
+      myCompleted,
+      partnerCompleted,
+    };
+  }
+
+  async answerDailySpark(
+    coupleSpaceId: string,
+    currentUserId: string,
+    dto: SubmitDailySparkAnswerDto,
+  ): Promise<DailySparkQuestionDto> {
+    if (!dto.answer || !dto.answer.trim()) {
+      throw new BadRequestException('Jawaban tidak boleh kosong');
+    }
+
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10);
+    const sparkRecordId = `${coupleSpaceId}_${dateStr}`;
+
+    let record = this.dailySparks.get(sparkRecordId);
+    if (!record) {
+      record = {
+        id: sparkRecordId,
+        coupleSpaceId,
+        date: dateStr,
+        userAnswers: {},
+        updatedAt: today.toISOString(),
+      };
+    }
+
+    if (!record.userAnswers) {
+      record.userAnswers = {};
+    }
+
+    record.userAnswers[currentUserId] = dto.answer.trim();
+    record.updatedAt = today.toISOString();
+    this.dailySparks.set(record.id, record);
+
+    return this.getDailySpark(coupleSpaceId, currentUserId);
   }
 
   async listSessions(coupleSpaceId: string, currentUserId: string): Promise<QuizSessionDto[]> {
@@ -69,8 +155,8 @@ export class GamesService {
       coupleSpaceId,
       title: dto.title.trim(),
       questions,
-      userAnswers: new Map(),
-      createdAt: new Date(),
+      userAnswers: {},
+      createdAt: new Date().toISOString(),
     };
 
     this.sessions.set(session.id, session);
@@ -88,17 +174,22 @@ export class GamesService {
       throw new NotFoundException('Quiz session not found');
     }
 
-    session.userAnswers.set(currentUserId, dto.answers);
+    if (!session.userAnswers) {
+      session.userAnswers = {};
+    }
+    session.userAnswers[currentUserId] = dto.answers;
+    this.sessions.set(session.id, session);
     return this.mapDto(session, currentUserId);
   }
 
   private mapDto(session: StoredQuizSession, currentUserId: string): QuizSessionDto {
-    const userIds = Array.from(session.userAnswers.keys());
-    const myAnswers = session.userAnswers.get(currentUserId);
+    const userAnswers = session.userAnswers || {};
+    const userIds = Object.keys(userAnswers);
+    const myAnswers = userAnswers[currentUserId];
     const partnerId = userIds.find((uid) => uid !== currentUserId);
-    const partnerAnswersRaw = partnerId ? session.userAnswers.get(partnerId) : undefined;
+    const partnerAnswersRaw = partnerId ? userAnswers[partnerId] : undefined;
 
-    const bothCompleted = session.userAnswers.size >= 2;
+    const bothCompleted = userIds.length >= 2;
     const revealed = bothCompleted;
 
     let scoreMatchPercentage: number | undefined = undefined;
@@ -126,7 +217,7 @@ export class GamesService {
       partnerCompleted: !!partnerAnswersRaw,
       myCompleted: !!myAnswers,
       scoreMatchPercentage,
-      createdAt: session.createdAt.toISOString(),
+      createdAt: session.createdAt,
     };
   }
 }

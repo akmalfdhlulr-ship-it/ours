@@ -4,7 +4,13 @@ import { CoupleSpaceGuard } from '../../common/guards/couple-space.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CurrentSpace } from '../../common/decorators/current-space.decorator';
 import { GamesService } from './games.service';
-import { DailySparkQuestionDto, QuizSessionDto, CreateQuizSessionDto, SubmitQuizAnswersDto } from '@ours/contracts';
+import {
+  DailySparkQuestionDto,
+  SubmitDailySparkAnswerDto,
+  QuizSessionDto,
+  CreateQuizSessionDto,
+  SubmitQuizAnswersDto,
+} from '@ours/contracts';
 
 @Controller('games')
 @UseGuards(AuthGuard, CoupleSpaceGuard)
@@ -12,8 +18,20 @@ export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
 
   @Get('daily-spark')
-  getDailySpark(): DailySparkQuestionDto {
-    return this.gamesService.getDailySpark();
+  async getDailySpark(
+    @CurrentSpace('id') spaceId: string,
+    @CurrentUser('id') userId: string,
+  ): Promise<DailySparkQuestionDto> {
+    return this.gamesService.getDailySpark(spaceId, userId);
+  }
+
+  @Post('daily-spark/answer')
+  async answerDailySpark(
+    @CurrentSpace('id') spaceId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: SubmitDailySparkAnswerDto,
+  ): Promise<DailySparkQuestionDto> {
+    return this.gamesService.answerDailySpark(spaceId, userId, dto);
   }
 
   @Get('sessions')

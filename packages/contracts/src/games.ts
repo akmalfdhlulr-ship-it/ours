@@ -3,6 +3,15 @@ export interface DailySparkQuestionDto {
   question: string;
   category: string;
   date: string;
+  myAnswer?: string | null;
+  partnerAnswer?: string | null;
+  revealed?: boolean;
+  myCompleted?: boolean;
+  partnerCompleted?: boolean;
+}
+
+export interface SubmitDailySparkAnswerDto {
+  answer: string;
 }
 
 export interface QuizQuestionDto {

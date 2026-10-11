@@ -81,6 +81,7 @@ import {
   CreateDecisionPollDto,
   CastVoteDto,
   DailySparkQuestionDto,
+  SubmitDailySparkAnswerDto,
   QuizSessionDto,
   CreateQuizSessionDto,
   SubmitQuizAnswersDto,
@@ -823,6 +824,14 @@ class ApiClient {
   readonly games = {
     getDailySpark: async (): Promise<DailySparkQuestionDto> => {
       return this.request<DailySparkQuestionDto>('/games/daily-spark');
+    },
+    answerDailySpark: async (
+      dto: SubmitDailySparkAnswerDto,
+    ): Promise<DailySparkQuestionDto> => {
+      return this.request<DailySparkQuestionDto>('/games/daily-spark/answer', {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      });
     },
     listSessions: async (): Promise<QuizSessionDto[]> => {
       return this.request<QuizSessionDto[]>('/games/sessions');

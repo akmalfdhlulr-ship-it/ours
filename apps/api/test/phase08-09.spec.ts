@@ -169,10 +169,60 @@ describe('OURS — Phase 08 & Phase 09 Invariant Verification', () => {
       const afterVote2 = await service.vote(coupleSpaceId, user2, poll.id, { optionIndex: 1 });
       expect(afterVote2.status).toBe('RESOLVED');
       expect(afterVote2.winnerOptionIndex).toBe(1);
+
+      // Verify tie handling when partners vote for different options
+      const tiePoll = await service.create(coupleSpaceId, user1, {
+        question: 'Weekend movie?',
+        options: ['Comedy', 'Thriller'],
+      });
+      await service.vote(coupleSpaceId, user1, tiePoll.id, { optionIndex: 0 });
+      const tieRes = await service.vote(coupleSpaceId, user2, tiePoll.id, { optionIndex: 1 });
+      expect(tieRes.status).toBe('RESOLVED');
+      expect(tieRes.winnerOptionIndex).toBeUndefined(); // Tie detected, neither option favored
     });
   });
 
   describe('08F Games & Quizzes', () => {
+    it('manages bilateral daily spark with mutual blind reveal for couples', async () => {
+      const service = new GamesService();
+      const initialSpark = service.getDailySpark(coupleSpaceId, user1);
+      expect(initialSpark.question).toBeDefined();
+      expect(initialSpark.revealed).toBe(false);
+      expect(initialSpark.myCompleted).toBe(false);
+
+      // User 1 answers Daily Spark
+      const u1Answer = await service.answerDailySpark(coupleSpaceId, user1, {
+        answer: 'Makan malam romantis di rooftop Senopati',
+      });
+      expect(u1Answer.myCompleted).toBe(true);
+      expect(u1Answer.partnerCompleted).toBe(false);
+      expect(u1Answer.revealed).toBe(false);
+      expect(u1Answer.myAnswer).toBe('Makan malam romantis di rooftop Senopati');
+      expect(u1Answer.partnerAnswer).toBeNull(); // Masked from user 1
+
+      // User 2 checks before answering
+      const u2ViewBefore = service.getDailySpark(coupleSpaceId, user2);
+      expect(u2ViewBefore.myCompleted).toBe(false);
+      expect(u2ViewBefore.partnerCompleted).toBe(true); // User 1 has answered
+      expect(u2ViewBefore.revealed).toBe(false);
+      expect(u2ViewBefore.partnerAnswer).toBeNull(); // Still masked until User 2 answers!
+
+      // User 2 answers
+      const u2Answer = await service.answerDailySpark(coupleSpaceId, user2, {
+        answer: 'Jalan santai berdua di tepi pantai saat senja',
+      });
+      expect(u2Answer.myCompleted).toBe(true);
+      expect(u2Answer.partnerCompleted).toBe(true);
+      expect(u2Answer.revealed).toBe(true); // MUTUAL REVEAL UNLOCKED!
+      expect(u2Answer.myAnswer).toBe('Jalan santai berdua di tepi pantai saat senja');
+      expect(u2Answer.partnerAnswer).toBe('Makan malam romantis di rooftop Senopati');
+
+      // User 1 checks after User 2 answered
+      const u1ViewAfter = service.getDailySpark(coupleSpaceId, user1);
+      expect(u1ViewAfter.revealed).toBe(true);
+      expect(u1ViewAfter.partnerAnswer).toBe('Jalan santai berdua di tepi pantai saat senja');
+    });
+
     it('protects blind answers until both partners submit, then reveals mutual answers', async () => {
       const service = new GamesService();
       const session = await service.createSession(coupleSpaceId, {
