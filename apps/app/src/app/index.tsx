@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -56,60 +56,129 @@ export default function HomeScreen() {
     );
   }
 
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  const slides = [
+    {
+      badge: 'APLIKASI RUANG PASANGAN',
+      titlePrimary: 'Selamat datang di',
+      titleBrand: 'OURS',
+      description:
+        'Tempat untuk merencanakan, menjelajah, menyimpan kenangan, dan tumbuh bersama.',
+      image:
+        'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1000&q=85',
+    },
+    {
+      badge: 'KENCAN & JELAJAH',
+      titlePrimary: 'Temukan Spot Kencan',
+      titleBrand: 'Romantis',
+      description:
+        'Ratusan kurasi kafe, restoran, dan aktivitas seru untuk kencan tak terlupakan.',
+      image:
+        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1000&q=85',
+    },
+    {
+      badge: 'KENANGAN & SCRAPBOOK',
+      titlePrimary: 'Simpan Setiap Momen',
+      titleBrand: 'Abadi',
+      description:
+        'Kolase foto polaroid, tiket memori, dan rekaman suara cinta kalian berdua.',
+      image:
+        'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1000&q=85',
+    },
+  ];
+
+  const currentSlide = slides[activeSlide];
+
   // If unauthenticated, show Screen 01: Onboarding
   if (lifecycleState === 'UNAUTHENTICATED') {
     return (
-      <ScrollView
-        contentContainerStyle={styles.onboardingContainer}
-        showsVerticalScrollIndicator={false}>
-        {/* Top Header Wordmark */}
-        <View style={styles.onboardingHeader}>
-          <View style={styles.logoBadgeRow}>
-            <Ionicons name="heart" size={20} color={colors.romanticPink || '#F43F5E'} />
-            <Text style={styles.brandTitle}>OURS</Text>
+      <View style={styles.onboardingScreenRoot}>
+        <ScrollView
+          contentContainerStyle={styles.onboardingScrollContent}
+          showsVerticalScrollIndicator={false}>
+          {/* Top Hero Photo Section with Curve & Badges */}
+          <View style={styles.heroSectionWrapper}>
+            <Image
+              source={{ uri: currentSlide.image }}
+              style={styles.heroPhotoImg}
+              resizeMode="cover"
+            />
+            {/* Soft Gradient Overlay */}
+            <View style={styles.heroGradientOverlayTop} />
+
+            {/* Top Right Floating Badge: #CeritaKita */}
+            <View style={styles.topRightBadge}>
+              <Ionicons name="heart" size={13} color="#F43F5E" />
+              <Text style={styles.topRightBadgeText}>#CeritaKita</Text>
+            </View>
+
+            {/* Bottom Left Floating Card: Ruang Berdua Tumbuh Bersama */}
+            <View style={styles.bottomLeftFloatCard}>
+              <View style={styles.bottomLeftIconCircle}>
+                <Ionicons name="heart" size={16} color="#F43F5E" />
+              </View>
+              <View>
+                <Text style={styles.bottomLeftSmallLabel}>Ruang Berdua</Text>
+                <Text style={styles.bottomLeftBoldLabel}>Tumbuh Bersama</Text>
+              </View>
+            </View>
           </View>
-          <Text style={styles.onboardingTagline}>Untuk setiap langkah kita, bersama.</Text>
-        </View>
 
-        {/* Hero Photo Card */}
-        <View style={styles.heroImageCard}>
-          <Image
-            source={{ uri: ONBOARDING_HERO_IMAGE }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
-          <View style={styles.heroGradientOverlay} />
-          <View style={styles.heroBadgeFloating}>
-            <Text style={styles.heroBadgeText}>More Dates, Brighter Days</Text>
+          {/* Bottom Content Area */}
+          <View style={styles.bottomOnboardingContent}>
+            {/* Pill Badge */}
+            <View style={styles.pillBadgeWrapper}>
+              <Ionicons name="heart" size={12} color="#E11D48" />
+              <Text style={styles.pillBadgeText}>{currentSlide.badge}</Text>
+            </View>
+
+            {/* Headline */}
+            <Text style={styles.headlinePrimaryText}>{currentSlide.titlePrimary}</Text>
+            <Text style={styles.headlineBrandText}>{currentSlide.titleBrand}</Text>
+
+            {/* Description Subtitle */}
+            <Text style={styles.subtitleDescText}>{currentSlide.description}</Text>
+
+            {/* Carousel Pagination Dots */}
+            <View style={styles.carouselDotsRow}>
+              {slides.map((_, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => setActiveSlide(idx)}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.dotItem,
+                    activeSlide === idx ? styles.dotItemActive : styles.dotItemInactive,
+                  ]}
+                />
+              ))}
+            </View>
+
+            {/* Action Buttons */}
+            <TouchableOpacity
+              style={styles.btnMulaiBersama}
+              onPress={() => {
+                if (activeSlide < slides.length - 1) {
+                  setActiveSlide(activeSlide + 1);
+                } else {
+                  router.push('/(auth)/register');
+                }
+              }}
+              activeOpacity={0.88}>
+              <Text style={styles.btnMulaiBersamaText}>Mulai Bersama</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <View style={styles.sudahPunyaAkunRow}>
+              <Text style={styles.sudahPunyaAkunText}>Sudah punya akun? </Text>
+              <TouchableOpacity onPress={() => router.push('/(auth)/login')} activeOpacity={0.7}>
+                <Text style={styles.masukLinkText}>Masuk</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-
-        {/* Copywriting & Actions */}
-        <View style={styles.onboardingContent}>
-          <Text style={styles.onboardingHeadline}>Selamat datang di OURS</Text>
-          <Text style={styles.onboardingDescription}>
-            Tempat untuk merencanakan kencan, menjelajah tempat seru, menyimpan kenangan indah, dan tumbuh bersama.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.primaryPillButton}
-            onPress={() => router.push('/(auth)/register')}
-            activeOpacity={0.88}>
-            <Text style={styles.primaryPillButtonText}>Mulai Bersama</Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryTextButton}
-            onPress={() => router.push('/(auth)/login')}
-            activeOpacity={0.7}>
-            <Text style={styles.secondaryTextButtonNormal}>
-              Sudah punya akun?{' '}
-              <Text style={styles.secondaryTextButtonHighlight}>Masuk</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -237,117 +306,209 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   // Onboarding Screen Styles
-  onboardingContainer: {
+  onboardingScreenRoot: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  onboardingScrollContent: {
     flexGrow: 1,
-    backgroundColor: '#F8F9FA',
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 40,
-    maxWidth: 500,
+    maxWidth: 480,
     width: '100%',
     alignSelf: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
   },
-  onboardingHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  logoBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  onboardingTagline: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  heroImageCard: {
-    width: '100%',
-    height: 380,
-    borderRadius: 28,
-    overflow: 'hidden',
+  heroSectionWrapper: {
     position: 'relative',
-    backgroundColor: '#E5E7EB',
-    shadowColor: '#202522',
-    shadowOffset: { width: 0, height: 8 },
+    width: '100%',
+    height: 440,
+    borderBottomLeftRadius: 44,
+    borderBottomRightRadius: 44,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowRadius: 14,
+    elevation: 4,
   },
-  heroImage: {
+  heroPhotoImg: {
     width: '100%',
     height: '100%',
   },
-  heroGradientOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.15)',
-  },
-  heroBadgeFloating: {
+  heroGradientOverlayTop: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  topRightBadge: {
+    position: 'absolute',
+    top: 24,
+    right: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#FFE4E6',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  heroBadgeText: {
+  topRightBadgeText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#F43F5E',
-    letterSpacing: 0.5,
+    fontWeight: '800',
+    color: '#111827',
   },
-  onboardingContent: {
-    marginTop: 24,
+  bottomLeftFloatCard: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  bottomLeftIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF1F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomLeftSmallLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  bottomLeftBoldLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  bottomOnboardingContent: {
+    paddingHorizontal: 28,
+    paddingTop: 24,
+    paddingBottom: 40,
     alignItems: 'center',
   },
-  onboardingHeadline: {
-    fontSize: 26,
+  pillBadgeWrapper: {
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 14,
+  },
+  pillBadgeText: {
+    fontSize: 11,
     fontWeight: '800',
-    color: '#1F2937',
+    color: '#E11D48',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  headlinePrimaryText: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#111827',
     textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  headlineBrandText: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#BE123C',
+    textAlign: 'center',
+    letterSpacing: 1.5,
+    marginTop: 2,
     marginBottom: 8,
   },
-  onboardingDescription: {
-    fontSize: 14,
+  subtitleDescText: {
+    fontSize: 13,
+    fontWeight: '500',
     color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 21,
-    paddingHorizontal: 8,
+    lineHeight: 20,
+    paddingHorizontal: 10,
+    marginBottom: 20,
+  },
+  carouselDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 24,
   },
-  primaryPillButton: {
+  dotItem: {
+    height: 6,
+    borderRadius: 3,
+  },
+  dotItemActive: {
+    width: 28,
+    backgroundColor: '#2563EB',
+  },
+  dotItemInactive: {
+    width: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  btnMulaiBersama: {
     width: '100%',
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#1F2937',
+    height: 54,
+    borderRadius: 20,
+    backgroundColor: '#2563EB',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
     elevation: 4,
   },
-  primaryPillButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
+  btnMulaiBersamaText: {
+    fontSize: 15,
+    fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-  secondaryTextButton: {
+  sudahPunyaAkunRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 16,
-    paddingVertical: 8,
   },
-  secondaryTextButtonNormal: {
-    fontSize: 14,
+  sudahPunyaAkunText: {
+    fontSize: 13,
     color: '#6B7280',
+    fontWeight: '500',
   },
-  secondaryTextButtonHighlight: {
-    fontWeight: '700',
-    color: colors.primaryBlue,
+  masukLinkText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#2563EB',
+    textDecorationLine: 'underline',
   },
   // Active Space Dashboard Styles
   scrollContent: {

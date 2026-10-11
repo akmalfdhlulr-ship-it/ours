@@ -79,6 +79,12 @@ export default function SharedHubScreen() {
   const [newMemPhotoUri, setNewMemPhotoUri] = useState<string | null>(null);
   const [uploadingMemPhoto, setUploadingMemPhoto] = useState(false);
 
+  // Scrapbook Screen State (Matching Image 4)
+  const [scrapbookPage, setScrapbookPage] = useState<number>(14);
+  const [scrapbookTab, setScrapbookTab] = useState<'buku' | 'kolase'>('buku');
+  const [isPlayingVoice, setIsPlayingVoice] = useState<boolean>(false);
+  const [isScrapbookLoved, setIsScrapbookLoved] = useState<boolean>(true);
+
   // Scrapbooks & Albums
   const [selectedAlbum, setSelectedAlbum] = useState<(AlbumItem & { memories?: MemoryItem[] }) | null>(null);
   const [loadingAlbumDetail, setLoadingAlbumDetail] = useState(false);
@@ -708,144 +714,330 @@ export default function SharedHubScreen() {
           )}
         </ScrollView>
       ) : viewMode === 'scrapbooks' ? (
-        /* ================= SCRAPBOOKS & ALBUMS ================= */
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
-          }>
-          {!selectedAlbum ? (
-            /* Album Grid / List View */
-            <View>
-              <View style={styles.galleryHeaderRow}>
+        /* ================= SCRAPBOOKS KENANGAN KITA (Matching Image 4) ================= */
+        <View style={{ flex: 1, backgroundColor: '#F8F9FF' }}>
+          {/* Top Bar Navigation & Tab Toggle */}
+          <View style={styles.sbTopBar}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => setViewMode('menu')}
+                style={styles.sbBackBtn}
+                activeOpacity={0.7}>
+                <Ionicons name="arrow-back" size={18} color="#1E293B" />
+              </TouchableOpacity>
+              <View style={styles.sbHeartCircle}>
+                <Ionicons name="heart" size={18} color="#F43F5E" />
+              </View>
+              <Text style={styles.sbTitle}>Scrapbook</Text>
+            </View>
+
+            <View style={styles.sbTabSegment}>
+              <TouchableOpacity
+                style={[styles.sbTabBtn, scrapbookTab === 'buku' && styles.sbTabBtnActive]}
+                onPress={() => setScrapbookTab('buku')}>
+                <Text style={[styles.sbTabText, scrapbookTab === 'buku' && styles.sbTabTextActive]}>
+                  Halaman Buku
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sbTabBtn, scrapbookTab === 'kolase' && styles.sbTabBtnActive]}
+                onPress={() => setScrapbookTab('kolase')}>
+                <Text style={[styles.sbTabText, scrapbookTab === 'kolase' && styles.sbTabTextActive]}>
+                  Kolase
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.sbScrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
+            }>
+            {/* Pagination Sub-header */}
+            <View style={styles.sbPaginationRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={styles.sbPagePill}>
+                  <Text style={styles.sbPagePillText}>Halaman {scrapbookPage} dari 36</Text>
+                </View>
+                <Text style={styles.sbLastEditedText}>Disunting kemarin oleh Sasa</Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  style={styles.sbPageNavBtn}
+                  onPress={() => setScrapbookPage((p) => Math.max(1, p - 1))}>
+                  <Ionicons name="chevron-back" size={15} color="#4B5563" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sbPageNavBtn}
+                  onPress={() => setScrapbookPage((p) => Math.min(36, p + 1))}>
+                  <Ionicons name="chevron-forward" size={15} color="#4B5563" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Kanvas Scrapbook Container */}
+            <View style={styles.sbCanvasCard}>
+              {/* Location Tag & Heading */}
+              <View style={{ marginBottom: 16 }}>
+                <View style={styles.sbLocationPill}>
+                  <Text style={styles.sbLocationPillText}>📍 Uluwatu & Seminyak, Bali</Text>
+                </View>
+                <Text style={styles.sbCanvasHeading}>Senja Pertama di Pantai 🌅</Text>
+                <Text style={styles.sbCanvasDateText}>14 FEBRUARI 2024 • 17:45 WITA</Text>
+              </View>
+
+              {/* Polaroid Frame Utama */}
+              <View style={styles.sbPolaroidCard}>
+                <View style={styles.sbPolaroidImageWrapper}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
+                    }}
+                    style={styles.sbPolaroidImg}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.sbPolaroidTagBadge}>
+                    <Ionicons name="camera-outline" size={11} color="#FFFFFF" />
+                    <Text style={styles.sbPolaroidTagText}>Polaroid #01</Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.sbPolaroidCaption}>"Hari pertama kita liat sunset bareng..."</Text>
+                    <Text style={styles.sbPolaroidSubCaption}>Daniel nahan nangis pas ombaknya kena sepatu 🌊🤍</Text>
+                  </View>
+                  <View style={styles.sbPassportBadge}>
+                    <Text style={styles.sbPassportBadgeText}>PASSPORT LOVED</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Kolase Photobooth Strip & Catatan Sasa */}
+              <View style={styles.sbCollageRow}>
+                {/* Photobooth strip */}
+                <View style={styles.sbPhotostripCard}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=300&q=80',
+                    }}
+                    style={styles.sbPhotostripImg}
+                  />
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=300&q=80',
+                    }}
+                    style={styles.sbPhotostripImg}
+                  />
+                  <Text style={styles.sbPhotostripLabel}>BLOK M • 2024</Text>
+                </View>
+
+                {/* Notes & Ticket Column */}
+                <View style={{ flex: 1, justifyContent: 'space-between' }}>
+                  {/* Catatan Sasa */}
+                  <View style={styles.sbLoveNoteCard}>
+                    <Text style={styles.sbLoveNoteHeader}>❤️ CATATAN SASA</Text>
+                    <Text style={styles.sbLoveNoteBody}>
+                      "Kalo diinget-inget, es krim kelapa di pinggir jalan rasanya jadi 10× lebih enak karena makannya sepiring berdua."
+                    </Text>
+                    <Text style={styles.sbLoveNoteAuthor}>— Sasa, 23:15</Text>
+                  </View>
+
+                  {/* Tiket Memori */}
+                  <View style={styles.sbTicketCard}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.sbTicketHeader}>✈️ TIKET MEMORI</Text>
+                      <Text style={styles.sbTicketFlight}>GA-402</Text>
+                    </View>
+                    <Text style={styles.sbTicketRoute}>CGK ✈ DPS</Text>
+                    <Text style={styles.sbTicketSeat}>Seat 14A & 14B • SAVED</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Voice Memo Bar */}
+              <View style={styles.sbVoiceMemoCard}>
+                <TouchableOpacity
+                  style={styles.sbVoicePlayBtn}
+                  onPress={() => setIsPlayingVoice(!isPlayingVoice)}
+                  activeOpacity={0.8}>
+                  <Ionicons name={isPlayingVoice ? 'pause' : 'play'} size={16} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sbVoiceTitle}>Suara Tawa Sasa di Pantai 🏖️</Text>
+                  <Text style={styles.sbVoiceDuration}>{isPlayingVoice ? 'Memutar...' : '0:42'} • Format Memo Suara</Text>
+                </View>
+
+                <View style={styles.sbVoiceApprovedBadge}>
+                  <Text style={styles.sbVoiceApprovedText}>APPROVED BY LOVE</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Koleksi Stiker Lucu */}
+            <View style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <Text style={styles.sbSectionTitle}>✨ Koleksi Stiker Lucu</Text>
+                <Text style={styles.sbSectionLink}>Lihat Semua (42)</Text>
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                <TouchableOpacity
+                  style={styles.sbStickerPill}
+                  onPress={() => setStatusMessage('Stiker ditempel!')}>
+                  <Text style={{ fontSize: 20 }}>💌</Text>
+                  <View>
+                    <Text style={styles.sbStickerName}>Surat Cinta</Text>
+                    <Text style={styles.sbStickerSub}>Tap to stick</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.sbStickerPill}
+                  onPress={() => setStatusMessage('Stiker ditempel!')}>
+                  <Text style={{ fontSize: 20 }}>🌺</Text>
+                  <View>
+                    <Text style={styles.sbStickerName}>Kamboja Bali</Text>
+                    <Text style={styles.sbStickerSub}>Estetik</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.sbStickerPill}
+                  onPress={() => setStatusMessage('Stiker ditempel!')}>
+                  <Text style={{ fontSize: 20 }}>☕</Text>
+                  <View>
+                    <Text style={styles.sbStickerName}>Kopi Sore</Text>
+                    <Text style={styles.sbStickerSub}>Favorit Sasa</Text>
+                  </View>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+
+            {/* Bab Cerita Kita */}
+            <View style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <View>
-                  <Text style={styles.sectionHeaderTitle}>Scrapbook Bersama</Text>
-                  <Text style={styles.sectionHeaderSub}>Album tematik dan buku cerita cinta berdua</Text>
+                  <Text style={styles.sbSectionTitle}>Bab Cerita Kita</Text>
+                  <Text style={styles.sbSectionSub}>Koleksi perjalanan cinta yang diarsipkan rapi</Text>
                 </View>
                 <TouchableOpacity
-                  style={[styles.addSmallBtn, { backgroundColor: '#8B5CF6' }]}
+                  style={styles.sbAddChapterBtn}
                   onPress={() => setShowCreateAlbumModal(true)}>
-                  <BookOpen size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.addSmallBtnText}>+ Buat Album</Text>
+                  <Plus size={16} color="#F43F5E" />
                 </TouchableOpacity>
               </View>
 
-              {albums.length > 0 ? (
-                <View style={{ gap: 16 }}>
-                  {albums.map((album) => {
-                    const coverUrl =
-                      album.coverMedia?.secureUrl ||
-                      'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=600&q=80';
-                    return (
-                      <TouchableOpacity
-                        key={album.id}
-                        style={styles.albumCard}
-                        onPress={() => handleOpenAlbum(album)}
-                        activeOpacity={0.9}>
-                        <Image source={{ uri: coverUrl }} style={styles.albumCoverImage} />
-                        <View style={styles.albumCardContent}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text style={styles.albumTitle} numberOfLines={1}>{album.title}</Text>
-                            <View style={styles.albumCountBadge}>
-                              <Text style={styles.albumCountText}>📸 {album.memoriesCount} Momen</Text>
-                            </View>
-                          </View>
-                          {album.description ? (
-                            <Text style={styles.albumDesc} numberOfLines={2}>
-                              {album.description}
-                            </Text>
-                          ) : null}
-                          <View style={styles.albumFooterRow}>
-                            <Text style={styles.albumDateText}>Dibuat {formatTanggal(album.createdAt)}</Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#8B5CF6' }}>Buka Album</Text>
-                              <ChevronRight size={14} color="#8B5CF6" />
-                            </View>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ) : (
-                <View style={styles.emptyGalleryBox}>
-                  <BookOpen size={48} color="#8B5CF6" style={{ marginBottom: 10 }} />
-                  <Text style={styles.emptyTitle}>Belum Ada Scrapbook Cerita</Text>
-                  <Text style={styles.emptySub}>
-                    Kumpulkan kenangan liburan, kencan pertama, atau anniversary ke dalam scrapbook tematik yang manis.
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.addMemoryPrimaryBtn, { backgroundColor: '#8B5CF6' }]}
-                    onPress={() => setShowCreateAlbumModal(true)}>
-                    <BookOpen size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.addMemoryPrimaryBtnText}>Buat Scrapbook Pertama</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ) : (
-            /* Selected Album Detail View */
-            <View>
-              <View style={styles.galleryHeaderRow}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={styles.sectionHeaderTitle}>{selectedAlbum.title}</Text>
-                  <Text style={styles.sectionHeaderSub}>
-                    {selectedAlbum.description || 'Album kenangan spesial kita berdua'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.addSmallBtn, { backgroundColor: '#8B5CF6' }]}
-                  onPress={() => setShowAddMemToAlbumModal(true)}>
-                  <Plus size={16} color="#FFFFFF" style={{ marginRight: 2 }} />
-                  <Text style={styles.addSmallBtnText}>Tambah Foto</Text>
-                </TouchableOpacity>
-              </View>
-
-              {loadingAlbumDetail ? (
-                <View style={{ padding: 40, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color="#8B5CF6" />
-                  <Text style={{ marginTop: 8, fontSize: 13, color: '#6B7280' }}>Membuka album...</Text>
-                </View>
-              ) : selectedAlbum.memories && selectedAlbum.memories.length > 0 ? (
-                <View style={{ gap: 16 }}>
-                  {selectedAlbum.memories.map((mem) => {
-                    const photoUrl =
-                      mem.media?.[0]?.mediaAsset?.secureUrl ||
-                      (mem as any).mediaAssets?.[0]?.url ||
-                      'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=600&q=80';
-                    return (
-                      <View key={mem.id} style={styles.albumMemoryItemCard}>
-                        <Image source={{ uri: photoUrl }} style={styles.albumMemoryImage} />
-                        <View style={{ padding: 14 }}>
-                          <Text style={styles.albumMemoryTitle}>{mem.title}</Text>
-                          <Text style={styles.albumMemoryDate}>{formatTanggal(mem.memoryDate)}</Text>
-                          {mem.description ? (
-                            <Text style={styles.albumMemoryDesc}>"{mem.description}"</Text>
-                          ) : null}
-                        </View>
+              <View style={{ gap: 10 }}>
+                {/* Bab 1 */}
+                <View style={styles.sbChapterCard}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=120&q=80',
+                    }}
+                    style={styles.sbChapterThumb}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <View style={styles.sbChapterBadgeGray}>
+                        <Text style={styles.sbChapterBadgeTextGray}>BAB 1</Text>
                       </View>
-                    );
-                  })}
+                      <Text style={styles.sbChapterPeriod}>Feb – Apr 2023</Text>
+                    </View>
+                    <Text style={styles.sbChapterTitle}>Awal Mula Cerita Kita</Text>
+                    <Text style={styles.sbChapterNote}>14 Momen • Kencan pertama, canggung tapi gemas</Text>
+                  </View>
+                  <ChevronRight size={16} color="#9CA3AF" />
                 </View>
-              ) : (
-                <View style={styles.emptyGalleryBox}>
-                  <ImageIcon size={44} color="#8B5CF6" style={{ marginBottom: 10 }} />
-                  <Text style={styles.emptyTitle}>Album Ini Masih Kosong</Text>
-                  <Text style={styles.emptySub}>
-                    Tambahkan kenangan dan foto kalian yang sudah ada ke dalam album ini.
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.addMemoryPrimaryBtn, { backgroundColor: '#8B5CF6' }]}
-                    onPress={() => setShowAddMemToAlbumModal(true)}>
-                    <Plus size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.addMemoryPrimaryBtnText}>Pilih Kenangan untuk Album</Text>
-                  </TouchableOpacity>
+
+                {/* Bab 2 (SEDANG DIBUKA) */}
+                <View style={[styles.sbChapterCard, styles.sbChapterCardActive]}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=120&q=80',
+                    }}
+                    style={styles.sbChapterThumb}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <View style={styles.sbChapterBadgeRose}>
+                        <Text style={styles.sbChapterBadgeTextRose}>SEDANG DIBUKA</Text>
+                      </View>
+                      <Text style={styles.sbChapterPeriod}>Jan – Mar 2024</Text>
+                    </View>
+                    <Text style={styles.sbChapterTitle}>Petualangan Liburan Berdua</Text>
+                    <Text style={styles.sbChapterNote}>28 Momen • Sunset Bali, koper kembar, & kulineran</Text>
+                  </View>
+                  <BookOpen size={16} color="#E11D48" />
                 </View>
-              )}
+
+                {/* Bab 3 */}
+                <View style={styles.sbChapterCard}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=120&q=80',
+                    }}
+                    style={styles.sbChapterThumb}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <View style={styles.sbChapterBadgeGray}>
+                        <Text style={styles.sbChapterBadgeTextGray}>BAB 3</Text>
+                      </View>
+                      <Text style={styles.sbChapterPeriod}>Apr – Sekarang</Text>
+                    </View>
+                    <Text style={styles.sbChapterTitle}>Kencan Kuliner & Malam Romantis</Text>
+                    <Text style={styles.sbChapterNote}>19 Momen • Hunting resto enak & ngobrol berjam-jam</Text>
+                  </View>
+                  <ChevronRight size={16} color="#9CA3AF" />
+                </View>
+              </View>
             </View>
-          )}
-        </ScrollView>
+
+            {/* Banner Cetak Buku Foto Fisik */}
+            <View style={styles.sbPrintBanner}>
+              <View style={styles.sbPrintIconCircle}>
+                <Ionicons name="print-outline" size={22} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sbPrintTitle}>Cetak Buku Foto Fisik OURS</Text>
+                <Text style={styles.sbPrintSub}>Album hardcover premium diantar langsung ke rumahmu.</Text>
+                <Text style={styles.sbPrintLink}>Lihat Preview Cetak &gt; Mulai Rp 149.000</Text>
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Floating Bottom Action Bar */}
+          <View style={styles.sbBottomActionBar}>
+            <TouchableOpacity
+              style={styles.sbBottomPrimaryBtn}
+              onPress={() => setShowAddMemoryModal(true)}
+              activeOpacity={0.88}>
+              <Plus size={18} color="#FFFFFF" />
+              <Text style={styles.sbBottomPrimaryText}>+ Tempel Foto / Catatan</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.sbBottomIconBtn, isScrapbookLoved && styles.sbBottomIconBtnActive]}
+              onPress={() => setIsScrapbookLoved(!isScrapbookLoved)}>
+              <Ionicons
+                name={isScrapbookLoved ? 'heart' : 'heart-outline'}
+                size={20}
+                color={isScrapbookLoved ? '#E11D48' : '#64748B'}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sbBottomIconBtn}
+              onPress={() => setStatusMessage('Tautan Scrapbook siap dibagikan')}>
+              <Ionicons name="share-social-outline" size={18} color="#4B5563" />
+            </TouchableOpacity>
+          </View>
+        </View>
       ) : viewMode === 'memory-map' ? (
         /* ================= MEMORY MAP ================= */
         <View style={styles.mapContainer}>
@@ -2276,5 +2468,547 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontStyle: 'italic',
     marginTop: 6,
+  },
+
+  // Scrapbook Styles (Matching Image 4: Layar Scrapbook Romantis)
+  sbTopBar: {
+    paddingTop: Platform.OS === 'ios' ? 12 : 16,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sbBackBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  sbHeartCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFE4E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sbTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  sbTabSegment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    padding: 3,
+    borderRadius: 14,
+  },
+  sbTabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 11,
+  },
+  sbTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  sbTabText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  sbTabTextActive: {
+    color: '#E11D48',
+  },
+  sbScrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 120,
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  sbPaginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 14,
+  },
+  sbPagePill: {
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  sbPagePillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#BE123C',
+  },
+  sbLastEditedText: {
+    fontSize: 11,
+    color: '#94A3B8',
+  },
+  sbPageNavBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  sbCanvasCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#FFE4E6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+    marginBottom: 16,
+  },
+  sbLocationPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  sbLocationPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  sbCanvasHeading: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: -0.4,
+  },
+  sbCanvasDateText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  sbPolaroidCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 16,
+    transform: [{ rotate: '-1deg' }],
+  },
+  sbPolaroidImageWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: 220,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+    marginBottom: 10,
+  },
+  sbPolaroidImg: {
+    width: '100%',
+    height: '100%',
+  },
+  sbPolaroidTagBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sbPolaroidTagText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  sbPolaroidCaption: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sbPolaroidSubCaption: {
+    fontSize: 11,
+    color: '#64748B',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  sbPassportBadge: {
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    transform: [{ rotate: '-3deg' }],
+  },
+  sbPassportBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#E11D48',
+  },
+  sbCollageRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  sbPhotostripCard: {
+    width: '42%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  sbPhotostripImg: {
+    width: '100%',
+    height: 96,
+    borderRadius: 10,
+    marginBottom: 6,
+    backgroundColor: '#F1F5F9',
+  },
+  sbPhotostripLabel: {
+    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: 0.5,
+  },
+  sbLoveNoteCard: {
+    backgroundColor: '#FFF1F2',
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#FFE4E6',
+  },
+  sbLoveNoteHeader: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#BE123C',
+    marginBottom: 4,
+  },
+  sbLoveNoteBody: {
+    fontSize: 11,
+    color: '#334155',
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  sbLoveNoteAuthor: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94A3B8',
+    textAlign: 'right',
+    marginTop: 6,
+  },
+  sbTicketCard: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 18,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E0F2FE',
+    marginTop: 8,
+  },
+  sbTicketHeader: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#2563EB',
+  },
+  sbTicketFlight: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  sbTicketRoute: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  sbTicketSeat: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#059669',
+    marginTop: 2,
+  },
+  sbVoiceMemoCard: {
+    backgroundColor: '#FFF1F2',
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#FFE4E6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sbVoicePlayBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E11D48',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sbVoiceTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sbVoiceDuration: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  sbVoiceApprovedBadge: {
+    backgroundColor: 'rgba(225, 29, 72, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  sbVoiceApprovedText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#E11D48',
+  },
+  sbSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  sbSectionLink: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#E11D48',
+  },
+  sbSectionSub: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  sbStickerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  sbStickerName: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sbStickerSub: {
+    fontSize: 9,
+    color: '#64748B',
+  },
+  sbAddChapterBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFE4E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sbChapterCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  sbChapterCardActive: {
+    borderColor: '#FECDD3',
+    backgroundColor: '#FFFBFB',
+  },
+  sbChapterThumb: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: '#E2E8F0',
+  },
+  sbChapterBadgeGray: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  sbChapterBadgeTextGray: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  sbChapterBadgeRose: {
+    backgroundColor: '#E11D48',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  sbChapterBadgeTextRose: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  sbChapterPeriod: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  sbChapterTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sbChapterNote: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  sbPrintBanner: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+    marginBottom: 20,
+  },
+  sbPrintIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sbPrintTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  sbPrintSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  sbPrintLink: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+    marginTop: 4,
+  },
+  sbBottomActionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sbBottomPrimaryBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: '#E11D48',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    shadowColor: '#E11D48',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  sbBottomPrimaryText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  sbBottomIconBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sbBottomIconBtnActive: {
+    backgroundColor: '#FFE4E6',
+    borderColor: '#FECDD3',
   },
 });

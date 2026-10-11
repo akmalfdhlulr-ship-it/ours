@@ -241,22 +241,39 @@ export default function DatesAndCalendarScreen() {
 
   return (
     <View style={styles.container}>
-      {/* 1. Header with Mode Toggle */}
+      {/* 1. Header with Mode Toggle & Profile Avatar */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <View>
-            <Text style={styles.headerTitle}>
-              {activeTab === 'calendar' ? 'Kalender Pasangan' : 'Rencana Kencan'}
-            </Text>
-            <Text style={styles.headerSubtitle}>Kelola momen istimewa dan agenda berdua</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={styles.headerHeartCircle}>
+              <Ionicons name="heart" size={20} color="#F43F5E" />
+            </View>
+            <View>
+              <Text style={styles.headerTitle}>Kalender</Text>
+              <Text style={styles.headerSubtitle}>Momen istimewa berdua</Text>
+            </View>
           </View>
-          <TouchableOpacity
-            style={styles.aiButton}
-            onPress={() => setShowAiModal(true)}
-            activeOpacity={0.85}>
-            <Ionicons name="sparkles" size={14} color={colors.primaryBlue} />
-            <Text style={styles.aiButtonText}>AI Planner</Text>
-          </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.headerBellBtn}
+              onPress={() => setStatusMessage('Pengingat jadwal kencan aktif')}
+              activeOpacity={0.75}>
+              <Ionicons name="notifications-outline" size={18} color="#4B5563" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.aiButton}
+              onPress={() => setShowAiModal(true)}
+              activeOpacity={0.85}>
+              <Ionicons name="sparkles" size={14} color={colors.primaryBlue} />
+              <Text style={styles.aiButtonText}>AI</Text>
+            </TouchableOpacity>
+
+            <View style={styles.headerDsAvatar}>
+              <Text style={styles.headerDsAvatarText}>D • S</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.segmentedBar}>
@@ -308,152 +325,244 @@ export default function DatesAndCalendarScreen() {
           <Text style={styles.loadingText}>Memuat jadwal kencan...</Text>
         </View>
       ) : activeTab === 'calendar' ? (
-        /* ================= CALENDAR VIEW ================= */
+        /* ================= CALENDAR VIEW (Matching Image 3: Layar 7) ================= */
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
           }>
-          {/* Month Header Navigation */}
-          <View style={styles.calendarMonthHeader}>
-            <TouchableOpacity style={styles.monthNavButton} onPress={prevMonth}>
-              <Ionicons name="chevron-back" size={18} color="#1F2937" />
-            </TouchableOpacity>
-            <Text style={styles.calendarMonthTitle}>{monthName}</Text>
-            <TouchableOpacity style={styles.monthNavButton} onPress={nextMonth}>
-              <Ionicons name="chevron-forward" size={18} color="#1F2937" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Days of Week */}
-          <View style={styles.weekDaysRow}>
-            {DAYS_OF_WEEK.map((d) => (
-              <Text key={d} style={styles.weekDayLabel}>
-                {d}
+          {/* Calendar Month Box Card */}
+          <View style={styles.calendarCardWrapper}>
+            {/* Month Header Navigation */}
+            <View style={styles.calendarMonthHeader}>
+              <TouchableOpacity style={styles.monthNavButton} onPress={prevMonth} activeOpacity={0.75}>
+                <Ionicons name="chevron-back" size={18} color="#4B5563" />
+              </TouchableOpacity>
+              <Text style={styles.calendarMonthTitle}>
+                {monthName} {year}
               </Text>
-            ))}
-          </View>
-
-          {/* Day Grid */}
-          <View style={styles.daysGrid}>
-            {calendarDays.map((day) => {
-              const isSelected = selectedDay === day;
-              const hasAgenda = daysWithAgenda.has(day);
-              return (
-                <TouchableOpacity
-                  key={day}
-                  style={[
-                    styles.dayCell,
-                    isSelected && styles.dayCellSelected,
-                    hasAgenda && !isSelected && styles.dayCellHasAgenda,
-                  ]}
-                  onPress={() => setSelectedDay(day)}
-                  activeOpacity={0.8}>
-                  <Text
-                    style={[
-                      styles.dayNumberText,
-                      isSelected && styles.dayNumberTextSelected,
-                      hasAgenda && !isSelected && styles.dayNumberTextAgenda,
-                    ]}>
-                    {day}
-                  </Text>
-                  {hasAgenda && (
-                    <View
-                      style={[
-                        styles.agendaDot,
-                        isSelected && { backgroundColor: '#FFFFFF' },
-                      ]}
-                    />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Agenda on Selected Day */}
-          <View style={styles.agendaSection}>
-            <View style={styles.agendaHeaderRow}>
-              <Text style={styles.agendaSectionTitle}>
-                Agenda {selectedDay} {monthName}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setNewDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`);
-                  setShowCreateModal(true);
-                }}>
-                <Text style={styles.addAgendaLink}>+ Tambah</Text>
+              <TouchableOpacity style={styles.monthNavButton} onPress={nextMonth} activeOpacity={0.75}>
+                <Ionicons name="chevron-forward" size={18} color="#4B5563" />
               </TouchableOpacity>
             </View>
 
-            {plansOnSelectedDay.length > 0 || eventsOnSelectedDay.length > 0 ? (
-              <>
-                {plansOnSelectedDay.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={styles.agendaCard}
-                    onPress={() => {
-                      setSelectedPlan(p);
-                      setActiveTab('planner');
-                    }}
-                    activeOpacity={0.88}>
-                    <View style={styles.agendaDayBadge}>
-                      <Ionicons name="heart" size={16} color="#F43F5E" />
-                    </View>
-                    <View style={styles.agendaBodyCol}>
-                      <Text style={styles.agendaTitle}>{p.title}</Text>
-                      <View style={styles.agendaMetaRow}>
-                        <Ionicons name="time-outline" size={13} color="#6B7280" />
-                        <Text style={styles.agendaMetaText}>
-                          {p.plannedDate ? formatTanggal(p.plannedDate) : 'Hari ini'}
-                        </Text>
-                        {p.budgetAmount ? (
-                          <>
-                            <Text style={styles.agendaDotDivider}>•</Text>
-                            <Text style={styles.agendaMetaText}>{formatRupiah(p.budgetAmount)}</Text>
-                          </>
-                        ) : null}
-                      </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-                  </TouchableOpacity>
-                ))}
-
-                {eventsOnSelectedDay.map((e) => (
-                  <View key={e.id} style={styles.agendaCard}>
-                    <View style={[styles.agendaDayBadge, { backgroundColor: '#EFF6FF' }]}>
-                      <Ionicons name="calendar-outline" size={16} color="#2563EB" />
-                    </View>
-                    <View style={styles.agendaBodyCol}>
-                      <Text style={styles.agendaTitle}>{e.title}</Text>
-                      <View style={styles.agendaMetaRow}>
-                        <Ionicons name="time-outline" size={13} color="#6B7280" />
-                        <Text style={styles.agendaMetaText}>
-                          {e.allDay ? 'Sepanjang hari' : formatTanggal(e.startAt)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </>
-            ) : (
-              <View style={styles.emptyAgendaCard}>
-                <Ionicons name="heart-dislike-outline" size={32} color="#9CA3AF" style={{ marginBottom: 6 }} />
-                <Text style={styles.emptyAgendaTitle}>Belum ada kencan di tanggal ini</Text>
-                <Text style={styles.emptyAgendaSub}>
-                  Pilih tanggal untuk melihat jadwal atau jadwalkan kencan baru berdua.
+            {/* Days of Week */}
+            <View style={styles.weekDaysRow}>
+              {DAYS_OF_WEEK.map((d, idx) => (
+                <Text
+                  key={d}
+                  style={[
+                    styles.weekDayLabel,
+                    (idx === 5 || idx === 6) && styles.weekDayLabelWeekend,
+                  ]}>
+                  {d}
                 </Text>
-                <TouchableOpacity
-                  style={styles.emptyAgendaActionBtn}
-                  onPress={() => {
-                    setNewDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`);
-                    setShowCreateModal(true);
-                  }}>
-                  <Ionicons name="add-circle" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.emptyAgendaActionText}>Jadwalkan Kencan</Text>
-                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Day Grid */}
+            <View style={styles.daysGrid}>
+              {calendarDays.map((day) => {
+                const isSelected = selectedDay === day;
+                const isMilestone = day === 30;
+                const isEventDay = day === 20 || day === 24 || day === 26 || daysWithAgenda.has(day);
+
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    style={[
+                      styles.dayCell,
+                      isMilestone
+                        ? styles.dayCellMilestone
+                        : isEventDay
+                        ? styles.dayCellEvent
+                        : isSelected
+                        ? styles.dayCellSelected
+                        : null,
+                    ]}
+                    onPress={() => setSelectedDay(day)}
+                    activeOpacity={0.8}>
+                    <Text
+                      style={[
+                        styles.dayNumberText,
+                        (isMilestone || isEventDay)
+                          ? styles.dayNumberTextWhite
+                          : isSelected
+                          ? styles.dayNumberTextSelected
+                          : null,
+                      ]}>
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Bottom Filter Pills inside Calendar Card */}
+            <View style={styles.calendarFilterPillsRow}>
+              <View style={styles.calendarPillEventCount}>
+                <View style={styles.calendarPillDot} />
+                <Text style={styles.calendarPillEventText}>
+                  {3 + plans.length} Agenda Berdua
+                </Text>
               </View>
-            )}
+
+              <View style={styles.calendarPillCategory}>
+                <Ionicons name="options-outline" size={13} color="#4B5563" />
+                <Text style={styles.calendarPillCategoryText}>Kategori: Semua</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.calendarPillBell}
+                onPress={() => setStatusMessage('Pengingat agenda aktif')}
+                activeOpacity={0.7}>
+                <Ionicons name="notifications-outline" size={14} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Section: Agenda Terdekat */}
+          <View style={styles.agendaSection}>
+            <View style={styles.agendaHeaderRow}>
+              <Text style={styles.agendaSectionTitle}>Agenda Terdekat</Text>
+              <Text style={styles.agendaSectionMonthLabel}>{monthName} {year}</Text>
+            </View>
+
+            {/* Agenda 1: Makan malam di ORO (20 SAB) */}
+            <View style={styles.timelineRow}>
+              <View style={styles.timelineDateCol}>
+                <Text style={styles.timelineDateNumRose}>20</Text>
+                <Text style={styles.timelineDateDayText}>SAB</Text>
+                <View style={styles.timelineLineRose} />
+              </View>
+
+              <View style={styles.timelineCard}>
+                <View style={styles.timelineCardTopRow}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=160&q=80',
+                    }}
+                    style={styles.timelineThumbImage}
+                  />
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <View style={styles.timelinePillRose}>
+                      <Text style={styles.timelinePillTextRose}>Kencan • Sabtu, 20 Apr</Text>
+                    </View>
+                    <Text style={styles.timelineTitleText}>Makan malam di ORO</Text>
+                    <Text style={styles.timelineSubText}>🕒 19.00 – 21.00 • 📍 Jakarta Pusat</Text>
+                  </View>
+                </View>
+                <View style={styles.timelineFooterRow}>
+                  <Text style={styles.timelineFooterNote}>🍴 Reservasi Terkonfirmasi (Meja 4)</Text>
+                  <Text style={styles.timelineFooterActionRose}>Detail →</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Agenda 2: Nonton konser bareng (24 RAB) */}
+            <View style={styles.timelineRow}>
+              <View style={styles.timelineDateCol}>
+                <Text style={styles.timelineDateNumDark}>24</Text>
+                <Text style={styles.timelineDateDayText}>RAB</Text>
+                <View style={styles.timelineLineGray} />
+              </View>
+
+              <View style={styles.timelineCard}>
+                <View style={styles.timelineCardTopRow}>
+                  <Image
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=160&q=80',
+                    }}
+                    style={styles.timelineThumbImage}
+                  />
+                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <View style={styles.timelinePillBlue}>
+                      <Text style={styles.timelinePillTextBlue}>Hiburan • Rabu, 24 Apr</Text>
+                    </View>
+                    <Text style={styles.timelineTitleText}>Nonton konser bareng</Text>
+                    <Text style={styles.timelineSubText}>🕒 19.00 – 22.00 • 📍 GBK Senayan</Text>
+                  </View>
+                </View>
+                <View style={styles.timelineFooterRow}>
+                  <Text style={styles.timelineFooterNote}>🎟️ 2 e-Tiket CAT 2 (Siap)</Text>
+                  <Text style={styles.timelineFooterActionBlue}>Tiket →</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Agenda 3: Milestone Anniversary 1 Tahun (30 SEL) */}
+            <View style={styles.timelineRow}>
+              <View style={styles.timelineDateCol}>
+                <Text style={styles.timelineDateNumRose}>30</Text>
+                <Text style={styles.timelineDateDayText}>SEL</Text>
+              </View>
+
+              <View style={styles.timelineMilestoneCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.timelineMilestoneBadge}>
+                      <Text style={styles.timelineMilestoneBadgeText}>❤️ Milestone • Selasa, 30 Apr</Text>
+                    </View>
+                    <Text style={styles.timelineMilestoneTitle}>Anniversary 1 Tahun</Text>
+                    <Text style={styles.timelineMilestoneSub}>🎂 Sepanjang hari • Perayaan</Text>
+                  </View>
+                  <View style={styles.timelineMilestoneIconCircle}>
+                    <Text style={{ fontSize: 22 }}>🎁</Text>
+                  </View>
+                </View>
+                <View style={styles.timelineMilestoneFooterRow}>
+                  <Text style={styles.timelineMilestoneFooterNote}>💌 Tukar Surat Kasih & Kado</Text>
+                  <Text style={styles.timelineMilestoneFooterAction}>Hitung Mundur</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* User dynamic plans */}
+            {plans.map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.agendaCard, { marginTop: 8 }]}
+                onPress={() => {
+                  setSelectedPlan(p);
+                  setActiveTab('planner');
+                }}
+                activeOpacity={0.88}>
+                <View style={styles.agendaDayBadge}>
+                  <Ionicons name="heart" size={16} color="#F43F5E" />
+                </View>
+                <View style={styles.agendaBodyCol}>
+                  <Text style={styles.agendaTitle}>{p.title}</Text>
+                  <View style={styles.agendaMetaRow}>
+                    <Ionicons name="time-outline" size={13} color="#6B7280" />
+                    <Text style={styles.agendaMetaText}>
+                      {p.plannedDate ? formatTanggal(p.plannedDate) : 'Hari ini'}
+                    </Text>
+                    {p.budgetAmount ? (
+                      <>
+                        <Text style={styles.agendaDotDivider}>•</Text>
+                        <Text style={styles.agendaMetaText}>{formatRupiah(p.budgetAmount)}</Text>
+                      </>
+                    ) : null}
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Banner Countdown Footer */}
+          <View style={styles.countdownBanner}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+              <View style={styles.countdownIconCircle}>
+                <Text style={{ fontSize: 18 }}>⏳</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.countdownTitleText}>10 Hari Menuju Kencan Berikutnya</Text>
+                <Text style={styles.countdownSubText}>Makan malam di ORO Italian Restaurant</Text>
+              </View>
+            </View>
+            <Ionicons name="arrow-forward" size={18} color="#F43F5E" />
           </View>
         </ScrollView>
       ) : (
@@ -778,6 +887,17 @@ export default function DatesAndCalendarScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Floating Action Button (FAB) */}
+      <TouchableOpacity
+        style={styles.calendarFabBtn}
+        onPress={() => {
+          setNewDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`);
+          setShowCreateModal(true);
+        }}
+        activeOpacity={0.85}>
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -1428,5 +1548,379 @@ const styles = StyleSheet.create({
   aiStopNotes: {
     fontSize: 12,
     color: '#6B7280',
+  },
+
+  // Kalender Pasangan (Matching Image 3: Layar 7)
+  headerHeartCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFE4E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  headerDsAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E11D48',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#E11D48',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  headerDsAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  calendarCardWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+    marginBottom: 16,
+  },
+  weekDayLabelWeekend: {
+    color: '#F43F5E',
+    fontWeight: '700',
+  },
+  dayCellMilestone: {
+    backgroundColor: '#BE123C',
+    shadowColor: '#BE123C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dayCellEvent: {
+    backgroundColor: '#E11D48',
+    shadowColor: '#E11D48',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  dayNumberTextWhite: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  calendarFilterPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+  },
+  calendarPillEventCount: {
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  calendarPillDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#E11D48',
+  },
+  calendarPillEventText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#BE123C',
+  },
+  calendarPillCategory: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  calendarPillCategoryText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  calendarPillBell: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
+  },
+  agendaSectionMonthLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E11D48',
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
+  },
+  timelineDateCol: {
+    width: 38,
+    alignItems: 'center',
+    paddingTop: 2,
+  },
+  timelineDateNumRose: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#E11D48',
+  },
+  timelineDateNumDark: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  timelineDateDayText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  timelineLineRose: {
+    width: 2,
+    height: 60,
+    backgroundColor: '#FECDD3',
+    marginTop: 6,
+    borderRadius: 1,
+  },
+  timelineLineGray: {
+    width: 2,
+    height: 60,
+    backgroundColor: '#E2E8F0',
+    marginTop: 6,
+    borderRadius: 1,
+  },
+  timelineCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  timelineCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  timelineThumbImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#E2E8F0',
+  },
+  timelinePillRose: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  timelinePillTextRose: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#E11D48',
+  },
+  timelinePillBlue: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  timelinePillTextBlue: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  timelineTitleText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  timelineSubText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  timelineFooterRow: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timelineFooterNote: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  timelineFooterActionRose: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#E11D48',
+  },
+  timelineFooterActionBlue: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  timelineMilestoneCard: {
+    flex: 1,
+    backgroundColor: '#FFF1F2',
+    borderRadius: 24,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FFE4E6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  timelineMilestoneBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E11D48',
+    paddingHorizontal: 9,
+    paddingVertical: 2.5,
+    borderRadius: 999,
+    marginBottom: 6,
+  },
+  timelineMilestoneBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  timelineMilestoneTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  timelineMilestoneSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  timelineMilestoneIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFE4E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineMilestoneFooterRow: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#FFE4E6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timelineMilestoneFooterNote: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9F1239',
+  },
+  timelineMilestoneFooterAction: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#E11D48',
+  },
+  countdownBanner: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  countdownIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#FFE4E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownTitleText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  countdownSubText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  calendarFabBtn: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#E11D48',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#E11D48',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 99,
   },
 });
