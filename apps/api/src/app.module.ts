@@ -30,6 +30,7 @@ import { SurprisesModule } from './modules/surprises/surprises.module';
 import { WrappedModule } from './modules/wrapped/wrapped.module';
 import { AiModule } from './modules/ai/ai.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     WrappedModule,
     AiModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
