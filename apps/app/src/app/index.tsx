@@ -23,6 +23,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{ token?: string }>();
   const { user, coupleSpace, lifecycleState, isLoading, logout } = useAuth();
+  const [activeSlide, setActiveSlide] = useState(0);
 
   // Handle deep link token if passed to root (e.g. /?token=...)
   useEffect(() => {
@@ -55,8 +56,6 @@ export default function HomeScreen() {
       </View>
     );
   }
-
-  const [activeSlide, setActiveSlide] = useState(0);
 
   const slides = [
     {
