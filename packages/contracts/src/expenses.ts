@@ -28,6 +28,36 @@ export interface VoidExpenseRequest {
   voidReason: string;
 }
 
+export type SplitMode = 'FIFTY_FIFTY' | 'DANIEL_FULL' | 'SASA_FULL' | 'CUSTOM';
+
+export type ExpenseCategoryKey =
+  | 'MAKAN_MINUM'
+  | 'AKTIVITAS_HIBURAN'
+  | 'TRANSPORTASI'
+  | 'BELANJA_BERSAMA'
+  | 'LAINNYA';
+
+export interface CategoryShareDto {
+  id: string;
+  key: string;
+  name: string;
+  subtitle: string;
+  amount: number;
+  percentage: number;
+  color: string;
+}
+
+export interface ReceiptHistoryItemDto {
+  id: string;
+  placeName: string;
+  fullName?: string;
+  dateLabel: string;
+  amount: number;
+  payerLabel: string;
+  splitLabel?: string;
+  imageUrl: string;
+}
+
 export interface ExpenseSummaryResponse {
   totalActiveAmount: number;
   currencyCode: string;
@@ -44,6 +74,19 @@ export interface ExpenseSummaryResponse {
   balanceOwed: number; // Positive means partner2 owes partner1, negative means partner1 owes partner2
   debtorUserId: string | null;
   creditorUserId: string | null;
+  
+  // Layar 8 Analytics & Budget Extension
+  period?: string;
+  month?: number;
+  year?: number;
+  totalSpent?: number;
+  targetBudget?: number;
+  trendPercentage?: number;
+  statusLabel?: string;
+  splitRatio?: string;
+  activeTab?: string;
+  categories?: CategoryShareDto[];
+  recentReceipts?: ReceiptHistoryItemDto[];
 }
 
 export interface ScanReceiptRequest {

@@ -70,9 +70,11 @@ export class CoupleSpaceGuard implements CanActivate {
       );
     }
 
-    // Allow both PENDING and ACTIVE couple spaces so couples can start logging expenses,
-    // creating memories, writing letters, and creating albums immediately.
-    // Only ARCHIVED spaces are forbidden.
+    if (space.status === 'PENDING' && !allowPending) {
+      throw new ForbiddenException(
+        'Couple space is still pending partner pairing',
+      );
+    }
 
     request.coupleSpace = space;
     request.membership = membership;

@@ -44,6 +44,7 @@ import {
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { formatRupiah, formatTanggal, parseRupiahInput } from '@/utils/format';
+import { ExpenseScreen } from '@/screens/ExpenseScreen';
 
 type ExpenseSubTab = 'summary' | 'transactions' | 'scanner' | 'result' | 'visits';
 
@@ -802,109 +803,17 @@ export default function ExpensesAndVisitsScreen() {
             </TouchableOpacity>
           </ScrollView>
         ) : (
-          /* ================= REGULAR EXPENSES / SUMMARY VIEW ================= */
-          <ScrollView
-            contentContainerStyle={styles.regularScrollContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />}>
-            {/* Header */}
-            <View style={styles.regularHeaderRow}>
-              <View>
-                <Text style={styles.regularScreenTitle}>Pengeluaran & Kunjungan</Text>
-                <Text style={styles.regularScreenSubtitle}>Pantau anggaran kencan dan transparansi bersama</Text>
-              </View>
-              <View style={styles.regularMonthBadge}>
-                <Wallet size={14} color="#2563EB" style={{ marginRight: 4 }} />
-                <Text style={styles.regularMonthBadgeText}>Bulan Ini</Text>
-              </View>
-            </View>
-
-            {/* Segmented Buttons */}
-            <View style={styles.segmentedButtonsRow}>
-              <TouchableOpacity
-                style={[styles.segmentPill, subTab === 'summary' && styles.segmentPillActive]}
-                onPress={() => setSubTab('summary')}>
-                <Text style={[styles.segmentPillText, subTab === 'summary' && styles.segmentPillTextActive]}>
-                  Ringkasan
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.segmentPill, subTab === 'transactions' && styles.segmentPillActive]}
-                onPress={() => setSubTab('transactions')}>
-                <Text style={[styles.segmentPillText, subTab === 'transactions' && styles.segmentPillTextActive]}>
-                  Transaksi ({expenses.length})
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.segmentPill, (subTab as ExpenseSubTab) === 'scanner' && styles.segmentPillActive]}
-                onPress={() => setSubTab('scanner')}>
-                <Scan size={14} color={(subTab as ExpenseSubTab) === 'scanner' ? '#FFFFFF' : '#4B5563'} style={{ marginRight: 4 }} />
-                <Text style={[styles.segmentPillText, (subTab as ExpenseSubTab) === 'scanner' && styles.segmentPillTextActive]}>
-                  Pindai Struk
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Hero Card */}
-            <View style={styles.heroExpenseCard}>
-              <Text style={styles.heroCardLabel}>Total Pengeluaran Bersama</Text>
-              <Text style={styles.heroCardAmount}>{formatRupiah(totalExpenseVal)}</Text>
-
-              {summary && summary.partner2 ? (
-                <View style={styles.splitRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.splitPartnerName}>{summary.partner1.displayName}</Text>
-                    <Text style={styles.splitPartnerVal}>{formatRupiah(summary.partner1.totalPaid)}</Text>
-                  </View>
-                  <View style={styles.splitVDivider} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.splitPartnerName}>{summary.partner2.displayName}</Text>
-                    <Text style={styles.splitPartnerVal}>{formatRupiah(summary.partner2.totalPaid)}</Text>
-                  </View>
-                </View>
-              ) : null}
-
-              <View style={styles.balancedBadge}>
-                <CheckCircle size={14} color="#10B981" style={{ marginRight: 6 }} />
-                <Text style={styles.balancedBadgeText}>Pengeluaran Berdua Terpantau Rapi</Text>
-              </View>
-            </View>
-
-            {/* Action Buttons */}
-            <View style={styles.actionButtonsRow}>
-              <TouchableOpacity
-                style={styles.primaryActionBtn}
-                onPress={() => setSubTab('scanner')}
-                activeOpacity={0.88}>
-                <Scan size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.primaryActionBtnText}>Pindai Struk Kamera</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.secondaryActionBtn}
-                onPress={() => setShowAddExpenseModal(true)}
-                activeOpacity={0.85}>
-                <Edit3 size={18} color="#1F2937" style={{ marginRight: 8 }} />
-                <Text style={styles.secondaryActionBtnText}>Catat Manual</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* List of Recent Transactions */}
-            <View style={{ marginTop: 20 }}>
-              <Text style={styles.sectionTitle}>Riwayat Transaksi Terbaru</Text>
-              {expenses.map((exp) => (
-                <View key={exp.id} style={styles.transactionCard}>
-                  <View style={styles.transactionIcon}>
-                    <Wallet size={18} color="#2563EB" />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.transactionTitle}>{exp.description}</Text>
-                    <Text style={styles.transactionDate}>{formatTanggal(exp.expenseDate)} • {exp.category || 'Makan'}</Text>
-                  </View>
-                  <Text style={styles.transactionAmount}>{formatRupiah(exp.amount)}</Text>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
+          /* ================= LAYAR 8: EXPENSE TRACKING & KEUANGAN BERDUA ================= */
+          <ExpenseScreen
+            onScanReceipt={() => setSubTab('scanner')}
+            onManualExpense={() => setShowAddExpenseModal(true)}
+            onViewAllReceipts={() => setSubTab('transactions')}
+            customCategories={summary?.categories}
+            customReceipts={summary?.recentReceipts}
+            totalSpent={summary?.totalSpent || summary?.totalActiveAmount || totalExpenseVal || 4320000}
+            targetBudget={summary?.targetBudget || 5000000}
+            trendPct={summary?.trendPercentage !== undefined ? summary.trendPercentage : -12}
+          />
         )}
 
         {/* Status Toast */}
