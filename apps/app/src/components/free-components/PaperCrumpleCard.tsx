@@ -28,8 +28,12 @@ interface PaperCrumpleCardProps {
   subtitle?: string;
   content: string;
   senderName?: string;
+  senderBadge?: string;
+  statusText?: string;
   date?: string;
   isSealedInitially?: boolean;
+  onOpen?: () => void;
+  onReply?: () => void;
 }
 
 export const PaperCrumpleCard: React.FC<PaperCrumpleCardProps> = ({
@@ -37,8 +41,12 @@ export const PaperCrumpleCard: React.FC<PaperCrumpleCardProps> = ({
   subtitle,
   content,
   senderName,
+  senderBadge,
+  statusText,
   date,
   isSealedInitially = true,
+  onOpen,
+  onReply,
 }) => {
   const [isOpened, setIsOpened] = useState(!isSealedInitially);
   const [unfoldAnim] = useState(() => new Animated.Value(isSealedInitially ? 0 : 1));
@@ -46,6 +54,9 @@ export const PaperCrumpleCard: React.FC<PaperCrumpleCardProps> = ({
   const handleToggle = () => {
     const nextState = !isOpened;
     setIsOpened(nextState);
+    if (nextState && onOpen) {
+      onOpen();
+    }
     Animated.spring(unfoldAnim, {
       toValue: nextState ? 1 : 0,
       friction: 8,
@@ -76,9 +87,16 @@ export const PaperCrumpleCard: React.FC<PaperCrumpleCardProps> = ({
       <View style={styles.headerRow}>
         <View style={styles.stampBadge}>
           <Ionicons name="mail" size={16} color="#B91C1C" />
-          <Text style={styles.stampText}>SURAT CINTA</Text>
+          <Text style={styles.stampText}>{senderBadge || 'SURAT CINTA'}</Text>
         </View>
-        {date ? <Text style={styles.dateText}>{date}</Text> : null}
+        <View style={{ alignItems: 'flex-end' }}>
+          {date ? <Text style={styles.dateText}>{date}</Text> : null}
+          {statusText ? (
+            <Text style={{ fontSize: 10, fontWeight: '700', color: '#B91C1C', marginTop: 2 }}>
+              {statusText}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
       <Text style={styles.title}>{title}</Text>
@@ -107,12 +125,23 @@ export const PaperCrumpleCard: React.FC<PaperCrumpleCardProps> = ({
             </View>
           ) : null}
 
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleToggle}
-            activeOpacity={0.7}>
-            <Text style={styles.closeButtonText}>Lipat Kembali</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+            {onReply && (
+              <TouchableOpacity
+                style={[styles.closeButton, { backgroundColor: '#F43F5E', borderColor: '#F43F5E' }]}
+                onPress={onReply}
+                activeOpacity={0.85}>
+                <Ionicons name="heart" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={[styles.closeButtonText, { color: '#FFFFFF' }]}>Balas Surat</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleToggle}
+              activeOpacity={0.7}>
+              <Text style={styles.closeButtonText}>Lipat Kembali</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </Animated.View>

@@ -70,11 +70,9 @@ export class CoupleSpaceGuard implements CanActivate {
       );
     }
 
-    if (space.status === 'PENDING' && !allowPending) {
-      throw new ForbiddenException(
-        'Couple space is still pending partner pairing',
-      );
-    }
+    // Allow both PENDING and ACTIVE couple spaces so couples can start logging expenses,
+    // creating memories, writing letters, and creating albums immediately.
+    // Only ARCHIVED spaces are forbidden.
 
     request.coupleSpace = space;
     request.membership = membership;

@@ -64,6 +64,16 @@ export class MediaController {
     return { data };
   }
 
+  @Post('direct-upload')
+  async directUpload(
+    @CurrentUser('id') userId: string,
+    @CurrentSpace('id') spaceId: string,
+    @Body() body: { imageBase64: string; filename?: string; mimeType?: string },
+  ): Promise<{ data: MediaAssetItem }> {
+    const data = await this.mediaService.directUpload(userId, spaceId, body);
+    return { data };
+  }
+
   @Delete(':id')
   async softDelete(
     @CurrentSpace('id') spaceId: string,

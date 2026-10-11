@@ -13,6 +13,22 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  BookOpen,
+  Camera,
+  Heart,
+  Image as ImageIcon,
+  Mail,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+  ChevronRight,
+  FolderPlus,
+  ArrowLeft,
+  Check,
+} from 'lucide-react-native';
 import { colors } from '@ours/design-tokens';
 import { useAuth } from '@/context/auth-context';
 import { api } from '@/services/api';
@@ -29,7 +45,7 @@ import { formatTanggal } from '@/utils/format';
 import { DriftWall, DriftWallItem } from '@/components/free-components/DriftWall';
 import { PaperCrumpleCard } from '@/components/free-components/PaperCrumpleCard';
 
-type HubViewMode = 'menu' | 'memories' | 'memory-map' | 'wishlist' | 'goals' | 'letters';
+type HubViewMode = 'menu' | 'memories' | 'scrapbooks' | 'memory-map' | 'wishlist' | 'goals' | 'letters';
 
 export default function SharedHubScreen() {
   const router = useRouter();
@@ -50,19 +66,35 @@ export default function SharedHubScreen() {
   // Selected memory for map & preview
   const [selectedMapMemory, setSelectedMapMemory] = useState<MemoryItem | null>(null);
 
-  // Modals
+  // Modals & form states
   const [showAddWishModal, setShowAddWishModal] = useState(false);
   const [wishTitle, setWishTitle] = useState('');
   const [wishCategory, setWishCategory] = useState('Pengalaman');
 
+  // Memories with real photo upload
   const [showAddMemoryModal, setShowAddMemoryModal] = useState(false);
   const [newMemTitle, setNewMemTitle] = useState('');
   const [newMemNotes, setNewMemNotes] = useState('');
   const [newMemDate, setNewMemDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newMemPhotoUri, setNewMemPhotoUri] = useState<string | null>(null);
+  const [uploadingMemPhoto, setUploadingMemPhoto] = useState(false);
 
+  // Scrapbooks & Albums
+  const [selectedAlbum, setSelectedAlbum] = useState<(AlbumItem & { memories?: MemoryItem[] }) | null>(null);
+  const [loadingAlbumDetail, setLoadingAlbumDetail] = useState(false);
+  const [showCreateAlbumModal, setShowCreateAlbumModal] = useState(false);
+  const [newAlbumTitle, setNewAlbumTitle] = useState('');
+  const [newAlbumDesc, setNewAlbumDesc] = useState('');
+  const [newAlbumCoverUri, setNewAlbumCoverUri] = useState<string | null>(null);
+  const [creatingAlbum, setCreatingAlbum] = useState(false);
+  const [showAddMemToAlbumModal, setShowAddMemToAlbumModal] = useState(false);
+  const [addingMemToAlbum, setAddingMemToAlbum] = useState(false);
+
+  // Letters
   const [showAddLetterModal, setShowAddLetterModal] = useState(false);
   const [letterTitle, setLetterTitle] = useState('');
   const [letterContent, setLetterContent] = useState('');
+  const [readingLetter, setReadingLetter] = useState<LoveLetterDto | null>(null);
 
   const [showAddGoalModal, setShowAddGoalModal] = useState(false);
   const [goalTitle, setGoalTitle] = useState('');
@@ -137,38 +169,216 @@ export default function SharedHubScreen() {
     }
   };
 
-  const handleCreateMemory = async () => {
-    if (!newMemTitle.trim()) return;
+  const handlePickImage = async (onSelected: (uri: string) => void) => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event: any) => {
+            const dataUrl = event.target?.result as string;
+            if (dataUrl) onSelected(dataUrl);
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+      return;
+    }
+
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setStatusMessage('Izin galeri foto diperlukan untuk memilih gambar');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.82,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        const uri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        onSelected(uri);
+      }
+    } catch (err: any) {
+      setStatusMessage('Gagal memilih foto: ' + (err?.message || ''));
+    }
+  };
+
+  const handleCaptureImage = async (onSelected: (uri: string) => void) => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setStatusMessage('Izin kamera diperlukan untuk mengambil foto');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.82,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        const uri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        onSelected(uri);
+      }
+    } catch (err: any) {
+      handlePickImage(onSelected);
+    }
+  };
+
+  const handleCreateMemory = async () => {
+    if (!newMemTitle.trim()) {
+      setStatusMessage('Judul kenangan harus diisi');
+      return;
+    }
+    setUploadingMemPhoto(true);
+    try {
+      let mediaAssetIds: string[] | undefined = undefined;
+      if (newMemPhotoUri) {
+        try {
+          const asset = await api.media.directUpload({
+            imageBase64: newMemPhotoUri,
+            filename: `memory_${Date.now()}.jpg`,
+            mimeType: 'image/jpeg',
+          });
+          if (asset?.id) {
+            mediaAssetIds = [asset.id];
+          }
+        } catch (mErr) {
+          console.warn('Media upload fallback:', mErr);
+        }
+      }
+
       await api.memories.create({
         title: newMemTitle.trim(),
         memoryDate: newMemDate,
         description: newMemNotes.trim() || undefined,
+        mediaAssetIds,
       });
+
       setNewMemTitle('');
       setNewMemNotes('');
+      setNewMemPhotoUri(null);
       setShowAddMemoryModal(false);
-      setStatusMessage('Kenangan indah berhasil diabadikan!');
+      setStatusMessage('Kenangan indah & foto berhasil diabadikan! 📸❤️');
       fetchData();
     } catch (err: any) {
       setStatusMessage(err?.message || 'Gagal menyimpan kenangan');
+    } finally {
+      setUploadingMemPhoto(false);
+    }
+  };
+
+  const handleCreateAlbum = async () => {
+    if (!newAlbumTitle.trim()) {
+      setStatusMessage('Judul scrapbook harus diisi');
+      return;
+    }
+    setCreatingAlbum(true);
+    try {
+      let coverMediaId: string | undefined = undefined;
+      if (newAlbumCoverUri) {
+        try {
+          const asset = await api.media.directUpload({
+            imageBase64: newAlbumCoverUri,
+            filename: `album_${Date.now()}.jpg`,
+            mimeType: 'image/jpeg',
+          });
+          if (asset?.id) {
+            coverMediaId = asset.id;
+          }
+        } catch (mErr) {
+          console.warn('Album cover upload fallback:', mErr);
+        }
+      }
+
+      await api.albums.create({
+        title: newAlbumTitle.trim(),
+        description: newAlbumDesc.trim() || undefined,
+        coverMediaId,
+      });
+
+      setNewAlbumTitle('');
+      setNewAlbumDesc('');
+      setNewAlbumCoverUri(null);
+      setShowCreateAlbumModal(false);
+      setStatusMessage('Scrapbook kenangan baru berhasil dibuat! 📖✨');
+      fetchData();
+    } catch (err: any) {
+      setStatusMessage(err?.message || 'Gagal membuat scrapbook');
+    } finally {
+      setCreatingAlbum(false);
+    }
+  };
+
+  const handleOpenAlbum = async (album: AlbumItem) => {
+    setSelectedAlbum(album);
+    setLoadingAlbumDetail(true);
+    try {
+      const fullAlbum = await api.albums.getById(album.id);
+      setSelectedAlbum(fullAlbum);
+    } catch (err: any) {
+      setStatusMessage('Gagal memuat isi scrapbook');
+    } finally {
+      setLoadingAlbumDetail(false);
+    }
+  };
+
+  const handleAddMemoryToAlbum = async (memoryId: string) => {
+    if (!selectedAlbum) return;
+    setAddingMemToAlbum(true);
+    try {
+      await api.albums.addMemory(selectedAlbum.id, memoryId);
+      const updated = await api.albums.getById(selectedAlbum.id);
+      setSelectedAlbum(updated);
+      setShowAddMemToAlbumModal(false);
+      setStatusMessage('Kenangan berhasil ditambahkan ke scrapbook! 📖');
+      fetchData();
+    } catch (err: any) {
+      setStatusMessage(err?.message || 'Gagal menambahkan kenangan');
+    } finally {
+      setAddingMemToAlbum(false);
     }
   };
 
   const handleSendLetter = async () => {
-    if (!letterTitle.trim() || !letterContent.trim()) return;
+    if (!letterTitle.trim() || !letterContent.trim()) {
+      setStatusMessage('Judul dan isi surat harus diisi');
+      return;
+    }
     try {
       await api.letters.create({
         title: letterTitle.trim(),
         content: letterContent.trim(),
+        status: 'SENT',
       });
       setLetterTitle('');
       setLetterContent('');
       setShowAddLetterModal(false);
-      setStatusMessage('Surat cinta rahasia berhasil disegel dan dikirim!');
+      setStatusMessage('Surat cinta rahasia berhasil disegel dan dikirim ke pasangan! 💌');
       fetchData();
     } catch (err: any) {
       setStatusMessage(err?.message || 'Gagal mengirim surat');
+    }
+  };
+
+  const handleOpenLetter = async (letItem: LoveLetterDto) => {
+    try {
+      const updated = await api.letters.get(letItem.id);
+      setReadingLetter(updated);
+      fetchData();
+    } catch {
+      setReadingLetter(letItem);
     }
   };
 
@@ -193,10 +403,11 @@ export default function SharedHubScreen() {
   const completedWishCount = wishlistItems.filter((w) => w.status === 'COMPLETED').length;
   const totalWishCount = wishlistItems.length;
 
-  // Convert memories into DriftWallItems
+  // Convert memories into DriftWallItems with real uploaded photo URLs
   const driftWallItems: DriftWallItem[] = memories.map((m, idx) => ({
     id: m.id,
     url:
+      m.media?.[0]?.mediaAsset?.secureUrl ||
       (m as any).mediaAssets?.[0]?.url ||
       (m as any).coverUrl ||
       'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=600&q=80',
@@ -217,7 +428,13 @@ export default function SharedHubScreen() {
           {viewMode !== 'menu' && (
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => setViewMode('menu')}>
+              onPress={() => {
+                if (selectedAlbum) {
+                  setSelectedAlbum(null);
+                } else {
+                  setViewMode('menu');
+                }
+              }}>
               <Ionicons name="arrow-back" size={20} color="#1F2937" />
             </TouchableOpacity>
           )}
@@ -226,13 +443,15 @@ export default function SharedHubScreen() {
               ? 'Ruang Hubungan'
               : viewMode === 'memories'
                 ? 'Kenangan Kita'
-                : viewMode === 'memory-map'
-                  ? 'Peta Kenangan'
-                  : viewMode === 'wishlist'
-                    ? 'Wishlist Bersama'
-                    : viewMode === 'goals'
-                      ? 'Tujuan Bersama'
-                      : 'Surat Cinta'}
+                : viewMode === 'scrapbooks'
+                  ? (selectedAlbum ? selectedAlbum.title : 'Scrapbook & Album')
+                  : viewMode === 'memory-map'
+                    ? 'Peta Kenangan'
+                    : viewMode === 'wishlist'
+                      ? 'Wishlist Bersama'
+                      : viewMode === 'goals'
+                        ? 'Tujuan Bersama'
+                        : 'Surat Cinta'}
           </Text>
           <TouchableOpacity
             style={styles.headerRightBtn}
@@ -310,7 +529,24 @@ export default function SharedHubScreen() {
               <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
             </TouchableOpacity>
 
-            {/* 2. Peta Kenangan */}
+            {/* 2. Scrapbook & Album Kenangan */}
+            <TouchableOpacity
+              style={styles.menuItemCard}
+              onPress={() => setViewMode('scrapbooks')}
+              activeOpacity={0.88}>
+              <View style={[styles.menuIconBox, { backgroundColor: '#EDE9FE' }]}>
+                <Ionicons name="book" size={20} color="#8B5CF6" />
+              </View>
+              <View style={styles.menuTextCol}>
+                <Text style={styles.menuTitle}>Scrapbook & Album</Text>
+                <Text style={styles.menuSub}>
+                  {albums.length > 0 ? `${albums.length} album kisah cinta` : 'Koleksi album tematik kenangan'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            {/* 3. Peta Kenangan */}
             <TouchableOpacity
               style={styles.menuItemCard}
               onPress={() => setViewMode('memory-map')}
@@ -468,6 +704,145 @@ export default function SharedHubScreen() {
                 <Ionicons name="camera" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
                 <Text style={styles.addMemoryPrimaryBtnText}>Tambah Kenangan Pertama</Text>
               </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      ) : viewMode === 'scrapbooks' ? (
+        /* ================= SCRAPBOOKS & ALBUMS ================= */
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
+          }>
+          {!selectedAlbum ? (
+            /* Album Grid / List View */
+            <View>
+              <View style={styles.galleryHeaderRow}>
+                <View>
+                  <Text style={styles.sectionHeaderTitle}>Scrapbook Bersama</Text>
+                  <Text style={styles.sectionHeaderSub}>Album tematik dan buku cerita cinta berdua</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.addSmallBtn, { backgroundColor: '#8B5CF6' }]}
+                  onPress={() => setShowCreateAlbumModal(true)}>
+                  <BookOpen size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.addSmallBtnText}>+ Buat Album</Text>
+                </TouchableOpacity>
+              </View>
+
+              {albums.length > 0 ? (
+                <View style={{ gap: 16 }}>
+                  {albums.map((album) => {
+                    const coverUrl =
+                      album.coverMedia?.secureUrl ||
+                      'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=600&q=80';
+                    return (
+                      <TouchableOpacity
+                        key={album.id}
+                        style={styles.albumCard}
+                        onPress={() => handleOpenAlbum(album)}
+                        activeOpacity={0.9}>
+                        <Image source={{ uri: coverUrl }} style={styles.albumCoverImage} />
+                        <View style={styles.albumCardContent}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={styles.albumTitle} numberOfLines={1}>{album.title}</Text>
+                            <View style={styles.albumCountBadge}>
+                              <Text style={styles.albumCountText}>📸 {album.memoriesCount} Momen</Text>
+                            </View>
+                          </View>
+                          {album.description ? (
+                            <Text style={styles.albumDesc} numberOfLines={2}>
+                              {album.description}
+                            </Text>
+                          ) : null}
+                          <View style={styles.albumFooterRow}>
+                            <Text style={styles.albumDateText}>Dibuat {formatTanggal(album.createdAt)}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#8B5CF6' }}>Buka Album</Text>
+                              <ChevronRight size={14} color="#8B5CF6" />
+                            </View>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyGalleryBox}>
+                  <BookOpen size={48} color="#8B5CF6" style={{ marginBottom: 10 }} />
+                  <Text style={styles.emptyTitle}>Belum Ada Scrapbook Cerita</Text>
+                  <Text style={styles.emptySub}>
+                    Kumpulkan kenangan liburan, kencan pertama, atau anniversary ke dalam scrapbook tematik yang manis.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.addMemoryPrimaryBtn, { backgroundColor: '#8B5CF6' }]}
+                    onPress={() => setShowCreateAlbumModal(true)}>
+                    <BookOpen size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.addMemoryPrimaryBtnText}>Buat Scrapbook Pertama</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : (
+            /* Selected Album Detail View */
+            <View>
+              <View style={styles.galleryHeaderRow}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.sectionHeaderTitle}>{selectedAlbum.title}</Text>
+                  <Text style={styles.sectionHeaderSub}>
+                    {selectedAlbum.description || 'Album kenangan spesial kita berdua'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.addSmallBtn, { backgroundColor: '#8B5CF6' }]}
+                  onPress={() => setShowAddMemToAlbumModal(true)}>
+                  <Plus size={16} color="#FFFFFF" style={{ marginRight: 2 }} />
+                  <Text style={styles.addSmallBtnText}>Tambah Foto</Text>
+                </TouchableOpacity>
+              </View>
+
+              {loadingAlbumDetail ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#8B5CF6" />
+                  <Text style={{ marginTop: 8, fontSize: 13, color: '#6B7280' }}>Membuka album...</Text>
+                </View>
+              ) : selectedAlbum.memories && selectedAlbum.memories.length > 0 ? (
+                <View style={{ gap: 16 }}>
+                  {selectedAlbum.memories.map((mem) => {
+                    const photoUrl =
+                      mem.media?.[0]?.mediaAsset?.secureUrl ||
+                      (mem as any).mediaAssets?.[0]?.url ||
+                      'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=600&q=80';
+                    return (
+                      <View key={mem.id} style={styles.albumMemoryItemCard}>
+                        <Image source={{ uri: photoUrl }} style={styles.albumMemoryImage} />
+                        <View style={{ padding: 14 }}>
+                          <Text style={styles.albumMemoryTitle}>{mem.title}</Text>
+                          <Text style={styles.albumMemoryDate}>{formatTanggal(mem.memoryDate)}</Text>
+                          {mem.description ? (
+                            <Text style={styles.albumMemoryDesc}>"{mem.description}"</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyGalleryBox}>
+                  <ImageIcon size={44} color="#8B5CF6" style={{ marginBottom: 10 }} />
+                  <Text style={styles.emptyTitle}>Album Ini Masih Kosong</Text>
+                  <Text style={styles.emptySub}>
+                    Tambahkan kenangan dan foto kalian yang sudah ada ke dalam album ini.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.addMemoryPrimaryBtn, { backgroundColor: '#8B5CF6' }]}
+                    onPress={() => setShowAddMemToAlbumModal(true)}>
+                    <Plus size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.addMemoryPrimaryBtnText}>Pilih Kenangan untuk Album</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>
@@ -693,17 +1068,40 @@ export default function SharedHubScreen() {
           </View>
 
           {letters.length > 0 ? (
-            letters.map((letItem) => (
-              <View key={letItem.id} style={{ marginBottom: 16 }}>
-                <PaperCrumpleCard
-                  title={letItem.title}
-                  content={letItem.content}
-                  date={formatTanggal(letItem.createdAt)}
-                  senderName="Pasangan Tersayang"
-                  isSealedInitially={true}
-                />
-              </View>
-            ))
+            letters.map((letItem) => {
+              const isMine = letItem.authorId === user?.id;
+              return (
+                <View key={letItem.id} style={{ marginBottom: 16 }}>
+                  <PaperCrumpleCard
+                    title={letItem.title}
+                    content={letItem.content}
+                    date={formatTanggal(letItem.createdAt)}
+                    senderBadge={isMine ? 'SURAT TERKIRIM' : 'SURAT DARI PASANGAN'}
+                    senderName={isMine ? 'Kamu (Untuk Pasangan)' : 'Pasanganmu Tersayang ❤️'}
+                    subtitle={
+                      isMine
+                        ? letItem.readAt
+                          ? '✓ Sudah dibuka oleh pasangan'
+                          : '✉️ Terkirim (Menunggu dibuka pasangan)'
+                        : letItem.readAt
+                          ? '✓ Sudah dibaca'
+                          : '💌 Surat Baru dari Pasanganmu!'
+                    }
+                    statusText={letItem.readAt ? 'Dibaca' : 'Belum Dibuka'}
+                    isSealedInitially={!isMine && !letItem.readAt}
+                    onOpen={() => handleOpenLetter(letItem)}
+                    onReply={
+                      !isMine
+                        ? () => {
+                            setLetterTitle(`Balasan: ${letItem.title}`);
+                            setShowAddLetterModal(true);
+                          }
+                        : undefined
+                    }
+                  />
+                </View>
+              );
+            })
           ) : (
             <View style={styles.emptyCard}>
               <Ionicons name="mail-outline" size={42} color="#F43F5E" style={{ marginBottom: 8 }} />
@@ -750,7 +1148,7 @@ export default function SharedHubScreen() {
         </View>
       </Modal>
 
-      {/* Modal Tambah Kenangan */}
+      {/* Modal Tambah Kenangan dengan Foto */}
       <Modal visible={showAddMemoryModal} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -759,6 +1157,67 @@ export default function SharedHubScreen() {
               <TouchableOpacity onPress={() => setShowAddMemoryModal(false)}>
                 <Ionicons name="close" size={22} color="#6B7280" />
               </TouchableOpacity>
+            </View>
+
+            {/* Photo Selection / Preview */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 }}>
+                Foto Kenangan (Galeri / Kamera)
+              </Text>
+              {newMemPhotoUri ? (
+                <View style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', height: 180, marginBottom: 8, backgroundColor: '#F3F4F6' }}>
+                  <Image source={{ uri: newMemPhotoUri }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                  <TouchableOpacity
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      backgroundColor: 'rgba(0,0,0,0.65)',
+                      borderRadius: 16,
+                      padding: 6,
+                    }}
+                    onPress={() => setNewMemPhotoUri(null)}>
+                    <X size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#EFF6FF',
+                      borderWidth: 1,
+                      borderColor: '#BFDBFE',
+                      borderRadius: 12,
+                      paddingVertical: 12,
+                      gap: 6,
+                    }}
+                    onPress={() => handlePickImage(setNewMemPhotoUri)}>
+                    <ImageIcon size={18} color="#2563EB" />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563EB' }}>Pilih Galeri</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#FFF1F2',
+                      borderWidth: 1,
+                      borderColor: '#FECDD3',
+                      borderRadius: 12,
+                      paddingVertical: 12,
+                      gap: 6,
+                    }}
+                    onPress={() => handleCaptureImage(setNewMemPhotoUri)}>
+                    <Camera size={18} color="#E11D48" />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#E11D48' }}>Potret Kamera</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             <TextInput
@@ -788,8 +1247,16 @@ export default function SharedHubScreen() {
             <TouchableOpacity
               style={styles.modalSubmitButton}
               onPress={handleCreateMemory}
+              disabled={uploadingMemPhoto}
               activeOpacity={0.88}>
-              <Text style={styles.modalSubmitButtonText}>Simpan Kenangan</Text>
+              {uploadingMemPhoto ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <Text style={styles.modalSubmitButtonText}>Mengunggah foto & kenangan...</Text>
+                </View>
+              ) : (
+                <Text style={styles.modalSubmitButtonText}>Simpan Kenangan</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -866,6 +1333,220 @@ export default function SharedHubScreen() {
               activeOpacity={0.88}>
               <Text style={styles.modalSubmitButtonText}>Simpan Tujuan</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Buat Scrapbook Baru */}
+      <Modal visible={showCreateAlbumModal} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <BookOpen size={20} color="#8B5CF6" />
+                <Text style={styles.modalTitle}>Buat Scrapbook Baru</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCreateAlbumModal(false)}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Cover photo selection */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 }}>
+                Foto Sampul Album (Opsional)
+              </Text>
+              {newAlbumCoverUri ? (
+                <View style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', height: 160, marginBottom: 8, backgroundColor: '#F3F4F6' }}>
+                  <Image source={{ uri: newAlbumCoverUri }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                  <TouchableOpacity
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      backgroundColor: 'rgba(0,0,0,0.65)',
+                      borderRadius: 16,
+                      padding: 6,
+                    }}
+                    onPress={() => setNewAlbumCoverUri(null)}>
+                    <X size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#F5F3FF',
+                    borderWidth: 1,
+                    borderColor: '#DDD6FE',
+                    borderRadius: 12,
+                    paddingVertical: 12,
+                    gap: 6,
+                  }}
+                  onPress={() => handlePickImage(setNewAlbumCoverUri)}>
+                  <ImageIcon size={18} color="#8B5CF6" />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#8B5CF6' }}>Pilih Foto Sampul Galeri</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Judul Scrapbook (misal: Liburan Pertama di Bali)"
+              placeholderTextColor="#9CA3AF"
+              value={newAlbumTitle}
+              onChangeText={setNewAlbumTitle}
+            />
+
+            <TextInput
+              style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
+              placeholder="Deskripsi atau catatan tentang perjalanan ini (opsional)"
+              placeholderTextColor="#9CA3AF"
+              multiline
+              value={newAlbumDesc}
+              onChangeText={setNewAlbumDesc}
+            />
+
+            <TouchableOpacity
+              style={[styles.modalSubmitButton, { backgroundColor: '#8B5CF6' }]}
+              onPress={handleCreateAlbum}
+              disabled={creatingAlbum}
+              activeOpacity={0.88}>
+              {creatingAlbum ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <Text style={styles.modalSubmitButtonText}>Membuat scrapbook...</Text>
+                </View>
+              ) : (
+                <Text style={styles.modalSubmitButtonText}>Simpan & Buka Scrapbook</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Tambah Kenangan ke Scrapbook */}
+      <Modal visible={showAddMemToAlbumModal} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitle}>Pilih Kenangan</Text>
+                <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                  Tambahkan momen indah ke "{selectedAlbum?.title}"
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAddMemToAlbumModal(false)}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 8 }}>
+              {memories.length > 0 ? (
+                memories.map((mem) => {
+                  const alreadyInAlbum = selectedAlbum?.memories?.some((am) => am.id === mem.id);
+                  const thumb =
+                    mem.media?.[0]?.mediaAsset?.secureUrl ||
+                    (mem as any).mediaAssets?.[0]?.url ||
+                    'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=200&q=80';
+
+                  return (
+                    <View
+                      key={mem.id}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        padding: 10,
+                        backgroundColor: '#F9FAFB',
+                        borderRadius: 14,
+                        marginBottom: 10,
+                        gap: 12,
+                      }}>
+                      <Image source={{ uri: thumb }} style={{ width: 50, height: 50, borderRadius: 10 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#1F2937' }}>{mem.title}</Text>
+                        <Text style={{ fontSize: 11, color: '#6B7280' }}>{formatTanggal(mem.memoryDate)}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={{
+                          backgroundColor: alreadyInAlbum ? '#E5E7EB' : '#8B5CF6',
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 10,
+                        }}
+                        disabled={alreadyInAlbum || addingMemToAlbum}
+                        onPress={() => handleAddMemoryToAlbum(mem.id)}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: alreadyInAlbum ? '#9CA3AF' : '#FFFFFF' }}>
+                          {alreadyInAlbum ? 'Sudah Ada' : '+ Tambah'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#6B7280' }}>Belum ada kenangan yang dibuat.</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Baca Surat Cinta Romantis */}
+      <Modal visible={!!readingLetter} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: '#FFFDF9', borderColor: '#EFE8DE', borderWidth: 1 }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Mail size={18} color="#B91C1C" />
+                <Text style={[styles.modalTitle, { color: '#78350F' }]}>Surat Cinta Romantis</Text>
+              </View>
+              <TouchableOpacity onPress={() => setReadingLetter(null)}>
+                <Ionicons name="close" size={22} color="#78350F" />
+              </TouchableOpacity>
+            </View>
+
+            {readingLetter && (
+              <ScrollView style={{ maxHeight: 380, marginVertical: 8 }}>
+                <Text style={{ fontSize: 12, color: '#92400E', fontWeight: '700', marginBottom: 4 }}>
+                  {formatTanggal(readingLetter.createdAt)}
+                </Text>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#78350F', marginBottom: 12 }}>
+                  {readingLetter.title}
+                </Text>
+                <View style={{ height: 1, backgroundColor: '#FDE68A', marginBottom: 12 }} />
+                <Text style={{ fontSize: 15, lineHeight: 24, color: '#451A03', fontStyle: 'italic' }}>
+                  {readingLetter.content}
+                </Text>
+                <View style={{ height: 1, backgroundColor: '#FDE68A', marginTop: 16, marginBottom: 12 }} />
+                <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '700', textAlign: 'right' }}>
+                  {readingLetter.authorId === user?.id ? 'Dari: Kamu (Untuk Pasangan)' : 'Dari: Pasanganmu Tersayang ❤️'}
+                </Text>
+              </ScrollView>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              {readingLetter?.authorId !== user?.id && (
+                <TouchableOpacity
+                  style={[styles.modalSubmitButton, { flex: 1, backgroundColor: '#F43F5E' }]}
+                  onPress={() => {
+                    const replyTitle = `Balasan: ${readingLetter?.title || ''}`;
+                    setReadingLetter(null);
+                    setLetterTitle(replyTitle);
+                    setShowAddLetterModal(true);
+                  }}>
+                  <Text style={styles.modalSubmitButtonText}>Balas Surat 💌</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.modalSubmitButton, { flex: 1, backgroundColor: '#78350F' }]}
+                onPress={() => setReadingLetter(null)}>
+                <Text style={styles.modalSubmitButtonText}>Tutup Surat</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1498,5 +2179,102 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+
+  // Album & Scrapbook Styles
+  albumCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  albumCoverImage: {
+    width: '100%',
+    height: 190,
+    resizeMode: 'cover',
+    backgroundColor: '#F3F4F6',
+  },
+  albumCardContent: {
+    padding: 16,
+  },
+  albumTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1F2937',
+    flex: 1,
+    marginRight: 8,
+  },
+  albumCountBadge: {
+    backgroundColor: '#F5F3FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  albumCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B5CF6',
+  },
+  albumDesc: {
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  albumFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  albumDateText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  albumMemoryItemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  albumMemoryImage: {
+    width: '100%',
+    height: 220,
+    resizeMode: 'cover',
+    backgroundColor: '#F3F4F6',
+  },
+  albumMemoryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  albumMemoryDate: {
+    fontSize: 12,
+    color: '#8B5CF6',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  albumMemoryDesc: {
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 18,
+    fontStyle: 'italic',
+    marginTop: 6,
   },
 });

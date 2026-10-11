@@ -192,8 +192,44 @@ export class MediaService {
     };
   }
 
+  async directUpload(
+    userId: string,
+    spaceId: string,
+    dto: { imageBase64: string; filename?: string; mimeType?: string },
+  ): Promise<MediaAssetItem> {
+    const mime = dto.mimeType || 'image/jpeg';
+    const dataUrl = dto.imageBase64.startsWith('data:')
+      ? dto.imageBase64
+      : `data:${mime};base64,${dto.imageBase64}`;
+
+    const filename = (dto.filename || `memory_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storageKey = dataUrl;
+    const fileSizeBytes = Math.round(dataUrl.length * 0.75);
+
+    const asset = await this.prisma.mediaAsset.create({
+      data: {
+        coupleSpaceId: spaceId,
+        uploadedById: userId,
+        storageKey,
+        originalFilename: filename,
+        mimeType: mime,
+        fileSizeBytes,
+        status: 'ACTIVE',
+        quotaCounted: true,
+        r2ObjectPresent: true,
+      },
+    });
+
+    return this.mapToItem(asset);
+  }
+
   private async mapToItem(asset: any): Promise<MediaAssetItem> {
-    const secureUrl = await this.storagePort.generatePrivateDeliveryUrl(asset.storageKey);
+    const secureUrl =
+      asset.storageKey.startsWith('http://') ||
+      asset.storageKey.startsWith('https://') ||
+      asset.storageKey.startsWith('data:')
+        ? asset.storageKey
+        : await this.storagePort.generatePrivateDeliveryUrl(asset.storageKey);
 
     return {
       id: asset.id,

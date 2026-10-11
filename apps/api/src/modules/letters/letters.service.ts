@@ -26,6 +26,27 @@ export class LettersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async onModuleInit() {
+    try {
+      await this.prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS love_letters (
+          id UUID PRIMARY KEY,
+          couple_space_id UUID NOT NULL,
+          author_id UUID NOT NULL,
+          recipient_id UUID,
+          title VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'SENT',
+          sent_at TIMESTAMPTZ,
+          read_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_love_letters_space ON love_letters(couple_space_id);
+      `);
+    } catch {}
+  }
+
   private async hasPgTable(): Promise<boolean> {
     try {
       const res: any = await this.prisma.$queryRawUnsafe(
@@ -39,7 +60,7 @@ export class LettersService {
 
   private async getPartnerId(coupleSpaceId: string, authorId: string): Promise<string> {
     const memberships = await this.prisma.coupleMembership.findMany({
-      where: { coupleSpaceId, status: 'ACTIVE' },
+      where: { coupleSpaceId },
     });
     const partner = memberships.find((m: any) => m.userId !== authorId);
     return partner ? partner.userId : authorId;
@@ -55,7 +76,10 @@ export class LettersService {
                   created_at as "createdAt", updated_at as "updatedAt"
            FROM love_letters
            WHERE couple_space_id = $1::uuid
-             AND ((author_id = $2::uuid) OR (recipient_id = $2::uuid AND status = 'SENT'))
+             AND (
+               (author_id = $2::uuid)
+               OR (status = 'SENT' AND (author_id != $2::uuid OR recipient_id = $2::uuid))
+             )
            ORDER BY created_at DESC;`,
           coupleSpaceId,
           userId
@@ -74,8 +98,11 @@ export class LettersService {
       if (letter.authorId === userId) {
         result.push(this.mapDto(letter));
       }
-      // Recipient sees ONLY SENT letters (never partner drafts)
-      else if (letter.recipientId === userId && letter.status === 'SENT') {
+      // Partner sees all SENT letters in this couple space
+      else if (letter.status === 'SENT') {
+        if (letter.recipientId !== userId) {
+          letter.recipientId = userId;
+        }
         result.push(this.mapDto(letter));
       }
     }
@@ -90,7 +117,8 @@ export class LettersService {
 
     const recipientId = await this.getPartnerId(coupleSpaceId, authorId);
     const now = new Date();
-    const isSent = dto.status === 'SENT';
+    // Default to SENT unless explicitly requested as DRAFT
+    const isDraft = dto.status === 'DRAFT';
 
     const letter: StoredLetter = {
       id: randomUUID(),
@@ -99,8 +127,8 @@ export class LettersService {
       recipientId,
       title: dto.title.trim(),
       content: dto.content.trim(),
-      status: isSent ? 'SENT' : 'DRAFT',
-      sentAt: isSent ? now : undefined,
+      status: isDraft ? 'DRAFT' : 'SENT',
+      sentAt: !isDraft ? now : undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -199,29 +227,45 @@ export class LettersService {
   }
 
   async get(coupleSpaceId: string, userId: string, id: string): Promise<LoveLetterDto> {
-    const letter = this.letters.get(id);
+    let letter = this.letters.get(id);
+    if (!letter && (await this.hasPgTable())) {
+      try {
+        const rows: any = await this.prisma.$queryRawUnsafe(
+          `SELECT id, couple_space_id as "coupleSpaceId", author_id as "authorId",
+                  recipient_id as "recipientId", title, content, status,
+                  sent_at as "sentAt", read_at as "readAt",
+                  created_at as "createdAt", updated_at as "updatedAt"
+           FROM love_letters
+           WHERE id = $1::uuid AND couple_space_id = $2::uuid;`,
+          id,
+          coupleSpaceId
+        );
+        if (rows && rows[0]) {
+          letter = rows[0];
+        }
+      } catch {}
+    }
+
     if (!letter || letter.coupleSpaceId !== coupleSpaceId) {
       throw new NotFoundException('Love letter not found');
     }
 
-    if (letter.authorId !== userId && letter.recipientId !== userId) {
-      throw new ForbiddenException('Access denied');
+    const isAuthor = letter.authorId === userId;
+    if (!isAuthor && letter.status !== 'SENT') {
+      throw new ForbiddenException('Letter has not been sent yet');
     }
 
-    // Recipient cannot view draft
-    if (letter.recipientId === userId && letter.status !== 'SENT') {
-      throw new NotFoundException('Letter has not been sent yet');
-    }
-
-    // Mark readAt if recipient opens for first time
-    if (letter.recipientId === userId && !letter.readAt) {
+    // Mark readAt if partner opens for first time
+    if (!isAuthor && !letter.readAt) {
       letter.readAt = new Date();
+      letter.recipientId = userId;
       this.letters.set(letter.id, letter);
 
       if (await this.hasPgTable()) {
         try {
           await this.prisma.$executeRawUnsafe(
-            `UPDATE love_letters SET read_at = NOW() WHERE id = $1::uuid AND read_at IS NULL;`,
+            `UPDATE love_letters SET read_at = NOW(), recipient_id = $1::uuid WHERE id = $2::uuid;`,
+            userId,
             letter.id
           );
         } catch {}

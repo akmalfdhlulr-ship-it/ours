@@ -601,6 +601,17 @@ class ApiClient {
       });
     },
 
+    directUpload: async (dto: {
+      imageBase64: string;
+      filename?: string;
+      mimeType?: string;
+    }): Promise<MediaAssetItem> => {
+      return this.request<MediaAssetItem>('/media/direct-upload', {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      });
+    },
+
     usage: async (): Promise<StorageUsageResponse> => {
       return this.request<StorageUsageResponse>('/media/usage');
     },

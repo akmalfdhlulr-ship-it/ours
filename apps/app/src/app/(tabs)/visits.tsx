@@ -407,7 +407,7 @@ export default function ExpensesAndVisitsScreen() {
 
       await api.expenses.create({
         description: `${merchantName}${itemsSummary}`,
-        amount: grandTotalVal,
+        amount: Math.max(1, Math.round(grandTotalVal)),
         category: 'Makan & Minum',
         datePlanId: selectedDatePlanId || undefined,
         expenseDate: new Date().toISOString(),
@@ -999,21 +999,25 @@ export default function ExpensesAndVisitsScreen() {
                     if (!newExpTitle.trim() || !newExpAmount.trim()) return;
                     setSavingExpense(true);
                     try {
+                      const parsed = parseRupiahInput(newExpAmount);
                       await api.expenses.create({
                         description: newExpTitle.trim(),
-                        amount: parseRupiahInput(newExpAmount),
+                        amount: parsed > 0 ? parsed : 1000,
                         category: newExpCategory,
                         expenseDate: new Date().toISOString(),
                       });
                       setShowAddExpenseModal(false);
                       setNewExpTitle('');
                       setNewExpAmount('');
+                      setStatusMessage('Pengeluaran berhasil dicatat!');
                       fetchData();
+                    } catch (err: any) {
+                      setStatusMessage(err?.message || 'Gagal menyimpan pengeluaran manual');
                     } finally {
                       setSavingExpense(false);
                     }
                   }}>
-                  <Text style={styles.modalSubmitBtnText}>Simpan</Text>
+                  <Text style={styles.modalSubmitBtnText}>{savingExpense ? 'Menyimpan...' : 'Simpan'}</Text>
                 </TouchableOpacity>
               </View>
             </View>

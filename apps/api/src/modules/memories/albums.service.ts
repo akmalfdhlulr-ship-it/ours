@@ -79,7 +79,12 @@ export class AlbumsService {
           width: mm.mediaAsset.width,
           height: mm.mediaAsset.height,
           status: mm.mediaAsset.status,
-          secureUrl: `/api/v1/media/stream?key=${encodeURIComponent(mm.mediaAsset.storageKey)}`,
+          secureUrl:
+            mm.mediaAsset.storageKey.startsWith('http://') ||
+            mm.mediaAsset.storageKey.startsWith('https://') ||
+            mm.mediaAsset.storageKey.startsWith('data:')
+              ? mm.mediaAsset.storageKey
+              : `/api/v1/media/stream?key=${encodeURIComponent(mm.mediaAsset.storageKey)}`,
           capturedAt: mm.mediaAsset.capturedAt ? mm.mediaAsset.capturedAt.toISOString() : null,
           createdAt: mm.mediaAsset.createdAt.toISOString(),
         },
@@ -240,7 +245,12 @@ export class AlbumsService {
             width: album.coverMedia.width,
             height: album.coverMedia.height,
             status: album.coverMedia.status,
-            secureUrl: `/api/v1/media/stream?key=${encodeURIComponent(album.coverMedia.storageKey)}`,
+            secureUrl:
+              album.coverMedia.storageKey.startsWith('http://') ||
+              album.coverMedia.storageKey.startsWith('https://') ||
+              album.coverMedia.storageKey.startsWith('data:')
+                ? album.coverMedia.storageKey
+                : `/api/v1/media/stream?key=${encodeURIComponent(album.coverMedia.storageKey)}`,
             capturedAt: album.coverMedia.capturedAt ? album.coverMedia.capturedAt.toISOString() : null,
             createdAt: album.coverMedia.createdAt.toISOString(),
           }

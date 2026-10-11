@@ -38,7 +38,8 @@ export class ExpensesService {
     spaceId: string,
     dto: CreateExpenseRequest,
   ): Promise<ExpenseItem> {
-    if (!Number.isInteger(dto.amount) || dto.amount <= 0) {
+    const normalizedAmount = Math.round(Number(dto.amount));
+    if (isNaN(normalizedAmount) || normalizedAmount <= 0) {
       throw new BadRequestException('Amount must be a positive integer in minor units');
     }
 
@@ -54,7 +55,7 @@ export class ExpensesService {
         paidById: userId,
         datePlanId: dto.datePlanId || null,
         description: dto.description.trim(),
-        amount: dto.amount,
+        amount: normalizedAmount,
         currencyCode,
         category: dto.category?.trim() || 'General',
         status: 'ACTIVE',
