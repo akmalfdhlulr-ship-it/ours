@@ -95,7 +95,7 @@ import {
 import { storage } from '../utils/storage';
 
 const SESSION_TOKEN_KEY = 'ours_session_token';
-const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ours-production.up.railway.app/api/v1';
 
 export class ApiError extends Error {
   constructor(
