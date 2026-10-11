@@ -39,8 +39,8 @@ const TAB_CONFIGS: Record<string, TabConfig> = {
   explore: {
     name: 'explore',
     label: 'Jelajah',
-    iconFocused: 'compass',
-    iconUnfocused: 'compass-outline',
+    iconFocused: 'search',
+    iconUnfocused: 'search-outline',
   },
   dates: {
     name: 'dates',
@@ -57,8 +57,8 @@ const TAB_CONFIGS: Record<string, TabConfig> = {
   hub: {
     name: 'hub',
     label: 'Lainnya',
-    iconFocused: 'sparkles',
-    iconUnfocused: 'sparkles-outline',
+    iconFocused: 'menu',
+    iconUnfocused: 'menu-outline',
   },
 };
 
@@ -148,7 +148,7 @@ function AnimatedTabItem({
         <Ionicons
           name={isFocused ? config.iconFocused : config.iconUnfocused}
           size={20}
-          color={isFocused ? colors.primaryBlue : '#8A92A0'}
+          color={isFocused ? '#1F2937' : '#8A92A0'}
         />
       </Animated.View>
 
@@ -233,16 +233,16 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 500,
     height: 66,
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
     borderRadius: 30,
     paddingHorizontal: 8,
     borderWidth: 1.2,
-    borderColor: 'rgba(230, 235, 250, 0.95)',
-    shadowColor: '#3657D6',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 12,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 8,
     ...(Platform.OS === 'web'
       ? ({
           backdropFilter: 'blur(20px)',
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     bottom: 6,
     left: 4,
     right: 4,
-    backgroundColor: '#E6EBFA',
+    backgroundColor: '#FFE8EC',
     borderRadius: 20,
   },
   tabLabel: {
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   tabLabelFocused: {
-    color: colors.primaryBlue,
+    color: '#1F2937',
     fontWeight: '800',
   },
   tabLabelUnfocused: {
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.primaryBlue,
+    backgroundColor: '#FF3366',
     position: 'absolute',
     bottom: 4,
   },

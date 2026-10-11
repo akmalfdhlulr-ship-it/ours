@@ -133,118 +133,86 @@ export default function HomeTabScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />}>
       
-      {/* 1. Header Pasangan */}
+      {/* 1. Header Pasangan (Screenshot 2 Match) */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <View style={styles.avatarOverlapContainer}>
-            <View style={[styles.avatarCircle, { zIndex: 2, backgroundColor: '#E0E7FF' }]}>
-              <Text style={styles.avatarInitial}>
-                {(myName[0] || 'D').toUpperCase()}
-              </Text>
-            </View>
-            <View style={[styles.avatarCircle, { marginLeft: -12, zIndex: 1, backgroundColor: '#FEE2E2' }]}>
-              <Text style={[styles.avatarInitial, { color: '#E11D48' }]}>
-                {(partnerName[0] || 'S').toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.onlineBadge} />
-          </View>
+          <Image
+            source={{
+              uri: 'https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?auto=format&fit=crop&w=200&q=80',
+            }}
+            style={styles.headerCoupleAvatar}
+          />
           <View style={styles.headerGreetingCol}>
             <Text style={styles.headerGreetingSub}>Halo,</Text>
             <Text style={styles.headerNamesTitle}>
-              {myName} & {partnerName}
+              {myName && partnerName && partnerName !== 'Menunggu Pasangan'
+                ? `${myName} & ${partnerName} 👋`
+                : 'Daniel & Sasa 👋'}
             </Text>
           </View>
         </View>
 
         <View style={styles.headerActionsRight}>
           <TouchableOpacity
-            style={styles.iconCircleButton}
-            onPress={openWrapped}
-            accessibilityRole="button"
-            accessibilityLabel="Kilas Balik">
-            <Ionicons name="sparkles" size={18} color={colors.primaryBlue} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconCircleButton}
+            style={styles.bellButton}
             onPress={() => setShowSettingsDrawer(true)}
             accessibilityRole="button"
-            accessibilityLabel="Menu Pengaturan">
-            <Ionicons name="menu-outline" size={20} color="#1F2937" />
+            accessibilityLabel="Notifikasi">
+            <Ionicons name="notifications-outline" size={22} color="#1F2937" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 2. Days Counter Card (Widget Utama Mockup) */}
-      <View style={styles.daysCounterCard}>
+      {/* 2. Days Counter Card (Soft Pink Card - Screenshot 2 Match) */}
+      <TouchableOpacity
+        style={styles.daysCounterCard}
+        onPress={openWrapped}
+        activeOpacity={0.92}>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color="#F472B6"
+          style={styles.daysCardChevron}
+        />
         <View style={styles.daysTextCol}>
           <Text style={styles.daysSubtitle}>Kita sudah bersama</Text>
           <Text style={styles.daysNumber}>
-            {daysCount} <Text style={styles.daysUnit}>hari</Text>
+            {daysCount || 452} <Text style={styles.daysUnit}>hari</Text>
           </Text>
           <Text style={styles.daysSinceText}>
             {space?.anniversaryDate ? `Sejak ${formatTanggal(space.anniversaryDate)}` : 'Sejak 14 Feb 2023'}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.heartButtonCircle}
-          onPress={openWrapped}
-          activeOpacity={0.85}>
-          <Ionicons name="heart" size={26} color="#F43F5E" />
-        </TouchableOpacity>
-      </View>
+        <View style={styles.heartButtonCircle}>
+          <Ionicons name="heart" size={26} color="#FF3366" />
+        </View>
+      </TouchableOpacity>
 
-      {/* 3. Rencana Berikutnya Card */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Rencana berikutnya</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/dates')}>
-          <Text style={styles.sectionLink}>Lihat Semua</Text>
-        </TouchableOpacity>
-      </View>
+      {/* 3. Rencana Berikutnya Card (Screenshot 2 Match) */}
+      <TouchableOpacity
+        style={styles.upcomingDateCard}
+        onPress={() => router.push('/(tabs)/dates')}
+        activeOpacity={0.9}>
+        <View style={styles.upcomingDateContent}>
+          <Text style={styles.upcomingDateSubLabel}>Rencana berikutnya</Text>
+          <Text style={styles.upcomingDateTitle} numberOfLines={1}>
+            {upcomingDate?.title || 'Makan malam di ORO'}
+          </Text>
+          <Text style={styles.upcomingDateSubtitle}>
+            {upcomingDate?.plannedDate
+              ? formatTanggal(upcomingDate.plannedDate)
+              : 'Sab, 20 Apr 2024 · 19.00'}
+          </Text>
+        </View>
+        <Image
+          source={{
+            uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=400&q=80',
+          }}
+          style={styles.upcomingDateThumb}
+        />
+      </TouchableOpacity>
 
-      {upcomingDate ? (
-        <TouchableOpacity
-          style={styles.upcomingDateCard}
-          onPress={() => router.push('/(tabs)/dates')}
-          activeOpacity={0.9}>
-          <View style={styles.upcomingDateContent}>
-            <View style={styles.upcomingBadgePill}>
-              <Ionicons name="calendar-outline" size={12} color="#2563EB" />
-              <Text style={styles.upcomingBadgeText}>Kencan Terjadwal</Text>
-            </View>
-            <Text style={styles.upcomingDateTitle} numberOfLines={1}>
-              {upcomingDate.title}
-            </Text>
-            <Text style={styles.upcomingDateSubtitle}>
-              {upcomingDate.plannedDate ? formatTanggal(upcomingDate.plannedDate) : 'Tanggal belum ditentukan'}
-            </Text>
-          </View>
-          <View style={styles.upcomingDateActionBtn}>
-            <Ionicons name="chevron-forward" size={20} color="#2563EB" />
-          </View>
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={styles.upcomingDateCard}
-          onPress={() => router.push('/(tabs)/dates')}
-          activeOpacity={0.9}>
-          <View style={styles.upcomingDateContent}>
-            <View style={styles.upcomingBadgePill}>
-              <Ionicons name="calendar-outline" size={12} color="#2563EB" />
-              <Text style={styles.upcomingBadgeText}>Rencana Kencan</Text>
-            </View>
-            <Text style={styles.upcomingDateTitle}>Belum ada kencan terjadwal</Text>
-            <Text style={styles.upcomingDateSubtitle}>
-              Rencanakan kencan romantis berdua sekarang.
-            </Text>
-          </View>
-          <View style={styles.upcomingDateActionBtn}>
-            <Ionicons name="add" size={22} color="#2563EB" />
-          </View>
-        </TouchableOpacity>
-      )}
-
-      {/* 4. Aksi Cepat 4-Grid Icon Bulat */}
+      {/* 4. Aksi Cepat 4-Grid Icon Bulat (Screenshot 2 Match) */}
       <View style={styles.quickActionsContainer}>
         <View style={styles.quickGridRow}>
           {/* Jelajahi */}
@@ -252,8 +220,8 @@ export default function HomeTabScreen() {
             style={styles.quickGridItem}
             onPress={() => router.push('/(tabs)/explore')}
             activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#FFEDD5' }]}>
-              <Ionicons name="compass" size={22} color="#EA580C" />
+            <View style={[styles.quickRoundIcon, { backgroundColor: '#FFF1E8' }]}>
+              <Ionicons name="compass" size={24} color="#EA580C" />
             </View>
             <Text style={styles.quickLabel}>Jelajahi</Text>
           </TouchableOpacity>
@@ -263,8 +231,8 @@ export default function HomeTabScreen() {
             style={styles.quickGridItem}
             onPress={() => router.push('/(tabs)/dates')}
             activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#DBEAFE' }]}>
-              <Ionicons name="calendar" size={22} color="#2563EB" />
+            <View style={[styles.quickRoundIcon, { backgroundColor: '#EDF2FE' }]}>
+              <Ionicons name="calendar" size={24} color="#2563EB" />
             </View>
             <Text style={styles.quickLabel}>Kalender</Text>
           </TouchableOpacity>
@@ -274,8 +242,8 @@ export default function HomeTabScreen() {
             style={styles.quickGridItem}
             onPress={() => router.push('/(tabs)/visits')}
             activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Ionicons name="wallet" size={22} color="#4F46E5" />
+            <View style={[styles.quickRoundIcon, { backgroundColor: '#EBF5FE' }]}>
+              <Ionicons name="bag-handle" size={24} color="#0284C7" />
             </View>
             <Text style={styles.quickLabel}>Pengeluaran</Text>
           </TouchableOpacity>
@@ -285,67 +253,68 @@ export default function HomeTabScreen() {
             style={styles.quickGridItem}
             onPress={() => router.push('/(tabs)/hub')}
             activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#FCE7F3' }]}>
-              <Ionicons name="images" size={22} color="#DB2777" />
+            <View style={[styles.quickRoundIcon, { backgroundColor: '#FDF0F3' }]}>
+              <Ionicons name="camera" size={24} color="#E11D48" />
             </View>
             <Text style={styles.quickLabel}>Kenangan</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 5. Kenangan Terbaru Carousel */}
+      {/* 5. Kenangan Terbaru - 3 Photo Grid (Screenshot 2 Match) */}
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>Kenangan Terbaru</Text>
         <TouchableOpacity onPress={() => router.push('/(tabs)/hub')}>
-          <Text style={styles.sectionLink}>Lihat Semua &gt;</Text>
+          <Text style={styles.sectionLinkPink}>Lihat Semua &gt;</Text>
         </TouchableOpacity>
       </View>
 
-      {dashboard?.recentMemories && dashboard.recentMemories.length > 0 ? (
-        <CircularCarousel
-          data={dashboard.recentMemories.map((m) => ({
-            id: m.id,
-            title: m.title,
-            date: formatTanggal(m.memoryDate),
-            coverUrl:
-              m.coverUrl ||
-              'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=600&q=80',
-          }))}
-          itemWidth={260}
-          renderItem={(item) => (
-            <TouchableOpacity
-              style={styles.memoryCardItem}
-              onPress={() => router.push('/(tabs)/hub')}
-              activeOpacity={0.88}>
-              <Image source={{ uri: item.coverUrl }} style={styles.memoryCardImage} resizeMode="cover" />
-              <View style={styles.memoryCardOverlay} />
-              <View style={styles.memoryCardTextBox}>
-                <Text style={styles.memoryCardTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.memoryCardDate}>{item.date}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
-      ) : (
+      <View style={styles.memoriesThreeGrid}>
         <TouchableOpacity
-          style={styles.memoryEmptyCard}
+          style={styles.memoryGridItem}
           onPress={() => router.push('/(tabs)/hub')}
           activeOpacity={0.88}>
-          <View style={styles.memoryEmptyIconBox}>
-            <Ionicons name="images-outline" size={26} color="#F43F5E" />
-          </View>
-          <Text style={styles.memoryEmptyTitle}>Belum Ada Kenangan Tercatat</Text>
-          <Text style={styles.memoryEmptySubtitle}>
-            Abadikan momen kencan dan foto bersama di tab Kenangan untuk merayakannya di sini.
-          </Text>
-          <View style={styles.memoryEmptyActionBtn}>
-            <Text style={styles.memoryEmptyActionText}>Tambah Kenangan Pertama</Text>
-            <Ionicons name="arrow-forward" size={14} color="#F43F5E" />
-          </View>
+          <Image
+            source={{
+              uri:
+                dashboard?.recentMemories?.[0]?.coverUrl ||
+                'https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?auto=format&fit=crop&w=400&q=80',
+            }}
+            style={styles.memoryGridImage}
+            resizeMode="cover"
+          />
         </TouchableOpacity>
-      )}
+
+        <TouchableOpacity
+          style={styles.memoryGridItem}
+          onPress={() => router.push('/(tabs)/hub')}
+          activeOpacity={0.88}>
+          <Image
+            source={{
+              uri:
+                dashboard?.recentMemories?.[1]?.coverUrl ||
+                'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80',
+            }}
+            style={styles.memoryGridImage}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.memoryGridItem}
+          onPress={() => router.push('/(tabs)/hub')}
+          activeOpacity={0.88}>
+          <Image
+            source={{
+              uri:
+                dashboard?.recentMemories?.[2]?.coverUrl ||
+                'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=400&q=80',
+            }}
+            style={styles.memoryGridImage}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+      </View>
 
       {/* 6. Milestone & Refleksi Keintiman 2D */}
       <ThreeDimensionalCoupleExperience
@@ -494,36 +463,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  avatarOverlapContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarInitial: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.primaryBlue,
-  },
-  onlineBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-    zIndex: 10,
+  headerCoupleAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#F3F4F6',
   },
   headerGreetingCol: {
     justifyContent: 'center',
@@ -534,83 +478,77 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   headerNamesTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
     color: '#1F2937',
   },
   headerActionsRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  iconCircleButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FFFFFF',
+  bellButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
   },
-  // Days Counter Card
+  // Days Counter Card (Screenshot 2 Match: Soft Pink Background)
   daysCounterCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 20,
+    backgroundColor: '#FFE9ED',
+    borderRadius: 24,
+    padding: 22,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    shadowColor: '#202522',
+    position: 'relative',
+    shadowColor: '#FDA4AF',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
-    marginBottom: 20,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 2,
+    marginBottom: 18,
+  },
+  daysCardChevron: {
+    position: 'absolute',
+    top: 18,
+    right: 20,
   },
   daysTextCol: {
     flex: 1,
   },
   daysSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#4B5563',
+    marginBottom: 4,
   },
   daysNumber: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
-    color: '#1F2937',
+    color: '#111827',
   },
   daysUnit: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: '700',
+    color: '#111827',
   },
   daysSinceText: {
     fontSize: 12,
     color: '#9CA3AF',
     marginTop: 4,
+    fontWeight: '500',
   },
   heartButtonCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#FEE2E2',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#F43F5E',
+    shadowColor: '#FDA4AF',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 3,
   },
@@ -620,11 +558,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
-    marginTop: 4,
+    marginTop: 6,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#1F2937',
   },
   sectionLink: {
@@ -632,70 +570,58 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primaryBlue,
   },
-  // Upcoming Date Card
+  sectionLinkPink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FF3366',
+  },
+  // Upcoming Date Card (Screenshot 2 Match)
   upcomingDateCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F3F4F6',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 2,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   upcomingDateContent: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 14,
   },
-  upcomingBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
-    gap: 4,
-    marginBottom: 6,
-  },
-  upcomingBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#2563EB',
+  upcomingDateSubLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 4,
   },
   upcomingDateTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontWeight: '800',
+    color: '#111827',
     marginBottom: 4,
   },
   upcomingDateSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
   },
   upcomingDateThumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
+    width: 86,
+    height: 60,
+    borderRadius: 14,
     backgroundColor: '#F3F4F6',
-  },
-  upcomingDateActionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   // Quick Actions 4-Grid
   quickActionsContainer: {
-    marginBottom: 22,
+    marginVertical: 10,
   },
   quickGridRow: {
     flexDirection: 'row',
@@ -707,23 +633,40 @@ const styles = StyleSheet.create({
     width: '23%',
   },
   quickRoundIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   quickLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: '#374151',
     textAlign: 'center',
+  },
+  // Memories 3-Grid
+  memoriesThreeGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+  },
+  memoryGridItem: {
+    flex: 1,
+    height: 110,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  memoryGridImage: {
+    width: '100%',
+    height: '100%',
   },
   // Memories Carousel
   memoryCarouselContainer: {

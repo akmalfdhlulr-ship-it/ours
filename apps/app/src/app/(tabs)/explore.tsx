@@ -12,91 +12,71 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { colors } from '@ours/design-tokens';
 import { api } from '@/services/api';
 import { PlaceItem, SavedPlaceItem } from '@ours/contracts';
 import { Ionicons } from '@expo/vector-icons';
-import { OptionWheel, OptionWheelItem } from '@/components/free-components/OptionWheel';
 
 const AREA_FILTERS = [
-  'Semua Wilayah',
-  'Jakarta Selatan',
+  'Semua Jakarta',
   'Jakarta Pusat',
-  'Jakarta Barat',
   'Jakarta Utara',
+  'Jakarta Selatan',
+  'Jakarta Barat',
   'Jakarta Timur',
-  'Bandung',
-  'Bali',
-  'Surabaya',
-  'Yogyakarta',
-  'Medan',
-  'Semarang',
-  'Makassar',
-  'Malang',
-  'Bogor',
-  'Solo',
 ];
 
-const CATEGORY_OPTIONS: OptionWheelItem[] = [
-  { id: 'Semua', label: 'Semua', icon: 'grid-outline', color: colors.primaryBlue },
-  { id: 'Kuliner', label: 'Restoran', icon: 'restaurant-outline', color: '#EA580C' },
-  { id: 'Kafe', label: 'Kafe Romantis', icon: 'cafe-outline', color: '#D97706' },
-  { id: 'Alam', label: 'Taman & Alam', icon: 'leaf-outline', color: '#16A34A' },
-  { id: 'Budaya', label: 'Seni & Museum', icon: 'business-outline', color: '#7C3AED' },
-  { id: 'Aktivitas', label: 'Aktivitas Berdua', icon: 'sparkles-outline', color: '#DB2777' },
-  { id: 'Hiburan Malam', label: 'Lounge & Musik', icon: 'musical-notes-outline', color: '#4F46E5' },
+interface CategoryItem {
+  id: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  bgColor: string;
+  iconColor: string;
+}
+
+const CATEGORY_ITEMS: CategoryItem[] = [
+  { id: 'Kafe', label: 'Kafe', icon: 'cafe', bgColor: '#FEE2E2', iconColor: '#F43F5E' },
+  { id: 'Restoran', label: 'Restoran', icon: 'restaurant', bgColor: '#FFEDD5', iconColor: '#EA580C' },
+  { id: 'Museum', label: 'Museum', icon: 'business', bgColor: '#E0F2FE', iconColor: '#0284C7' },
+  { id: 'Taman', label: 'Taman', icon: 'leaf', bgColor: '#DCFCE7', iconColor: '#16A34A' },
+  { id: 'Aktivitas', label: 'Aktivitas', icon: 'ribbon', bgColor: '#EDE9FE', iconColor: '#7C3AED' },
 ];
 
 export default function ExploreScreen() {
-  const [activeTab, setActiveTab] = useState<'list' | 'map' | 'saved'>('list');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedArea, setSelectedArea] = useState('Semua Wilayah');
-  const [selectedCategory, setSelectedCategory] = useState('Semua');
+  const [selectedArea, setSelectedArea] = useState('Semua Jakarta');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
 
   const [places, setPlaces] = useState<PlaceItem[]>([]);
-  const [savedPlaces, setSavedPlaces] = useState<SavedPlaceItem[]>([]);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  // Detail Modal State
   const [selectedDetailPlace, setSelectedDetailPlace] = useState<PlaceItem | null>(null);
-  const [selectedPinPlace, setSelectedPinPlace] = useState<PlaceItem | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const fetchPlaces = useCallback(async () => {
     try {
-      setError(null);
-      if (activeTab === 'saved') {
-        const savedRes = await api.places.getSaved();
-        setSavedPlaces(savedRes);
-        setSavedIds(new Set(savedRes.map((s) => s.placeId)));
-      } else {
-        const areaQuery = selectedArea !== 'Semua Wilayah' ? selectedArea : '';
-        const combinedQuery = [searchQuery.trim(), areaQuery].filter(Boolean).join(' ') || undefined;
+      const areaParam = selectedArea !== 'Semua Jakarta' ? selectedArea : '';
+      const combinedQuery = [searchQuery.trim(), areaParam].filter(Boolean).join(' ') || undefined;
 
-        const [placesRes, savedRes] = await Promise.all([
-          api.places.search({
-            query: combinedQuery,
-            category: selectedCategory === 'Semua' ? undefined : selectedCategory,
-          }),
-          api.places.getSaved().catch(() => []),
-        ]);
-        setPlaces(placesRes);
-        setSavedIds(new Set(savedRes.map((s) => s.placeId)));
-        if (placesRes.length > 0 && !selectedPinPlace) {
-          setSelectedPinPlace(placesRes[0]);
-        }
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Gagal memuat tempat kencan');
+      const [placesRes, savedRes] = await Promise.all([
+        api.places.search({
+          query: combinedQuery,
+          category: selectedCategory || undefined,
+        }),
+        api.places.getSaved().catch(() => []),
+      ]);
+
+      setPlaces(placesRes);
+      setSavedIds(new Set(savedRes.map((s: SavedPlaceItem) => s.placeId)));
+    } catch {
+      // Fallback
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeTab, searchQuery, selectedCategory, selectedArea]);
+  }, [searchQuery, selectedCategory, selectedArea]);
 
   useEffect(() => {
     fetchPlaces();
@@ -121,126 +101,123 @@ export default function ExploreScreen() {
       } else {
         await api.places.save({ placeId: place.id });
         setSavedIds((prev) => new Set([...prev, place.id]));
-        setStatusMessage(`"${place.name}" disimpan ke tempat favorit!`);
+        setStatusMessage(`"${place.name}" disimpan ke favorit!`);
       }
     } catch (err: any) {
       setStatusMessage(err?.message || 'Gagal memperbarui status favorit');
     }
   };
 
-  const handleAddToPlan = async (place: PlaceItem) => {
+  const handleAddToWishlist = async (place: PlaceItem) => {
     try {
       await api.wishlist.create({
         title: `Kencan di ${place.name}`,
         category: place.category || 'Kencan',
         description: place.address || undefined,
       });
-      setStatusMessage(`"${place.name}" berhasil ditambahkan ke wishlist kencan!`);
+      setStatusMessage(`"${place.name}" ditambahkan ke Wishlist!`);
       setSelectedDetailPlace(null);
     } catch (err: any) {
       setStatusMessage(err?.message || 'Gagal menambahkan ke wishlist');
     }
   };
 
-  // Places are fetched directly from search API with combined queries (area + keyword)
-  const displayedPlaces = places;
-
-  const getPlaceImage = (place: PlaceItem): string => {
-    return (
-      place.metadata?.imageUrl ||
-      place.metadata?.image ||
-      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=700&q=80'
-    );
-  };
-
-  const getPlaceRating = (place: PlaceItem): string | null => {
-    const r = place.metadata?.rating;
-    return typeof r === 'number' ? r.toFixed(1) : (r ? `${r}` : null);
-  };
-
-  const getPlacePrice = (place: PlaceItem): string | null => {
-    return place.metadata?.priceLevel || place.metadata?.priceRange || null;
-  };
-
-  const getPlaceHours = (place: PlaceItem): string | null => {
-    return place.metadata?.openingHours || place.metadata?.bestTime || null;
-  };
+  const displayedPlaces = places.filter((p) => {
+    if (showSavedOnly) return savedIds.has(p.id);
+    return true;
+  });
 
   return (
     <View style={styles.container}>
-      {/* 1. Header & Controls */}
+      {/* 1. Header (Jelajahi Jakarta + Heart outline) */}
       <View style={styles.header}>
-        <View style={styles.headerTitleRow}>
-          <View>
-            <Text style={styles.screenTitle}>
-              {selectedArea === 'Semua Wilayah' ? 'Jelajahi Indonesia' : `Jelajahi ${selectedArea}`}
-            </Text>
-            <Text style={styles.screenSubtitle}>Temukan tempat kencan romantis untuk momen berdua</Text>
-          </View>
-          <View style={styles.viewToggleGroup}>
-            <TouchableOpacity
-              style={[styles.toggleBtn, activeTab === 'list' && styles.toggleBtnActive]}
-              onPress={() => setActiveTab('list')}>
-              <Ionicons
-                name="list"
-                size={16}
-                color={activeTab === 'list' ? '#FFFFFF' : '#4B5563'}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleBtn, activeTab === 'map' && styles.toggleBtnActive]}
-              onPress={() => setActiveTab('map')}>
-              <Ionicons
-                name="map"
-                size={16}
-                color={activeTab === 'map' ? '#FFFFFF' : '#4B5563'}
-              />
-            </TouchableOpacity>
-          </View>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.screenTitle}>Jelajahi Jakarta</Text>
+          <TouchableOpacity
+            style={styles.headerHeartBtn}
+            onPress={() => setShowSavedOnly(!showSavedOnly)}
+            activeOpacity={0.75}>
+            <Ionicons
+              name={showSavedOnly ? 'heart' : 'heart-outline'}
+              size={24}
+              color={showSavedOnly ? '#F43F5E' : '#1E293B'}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* 2. Search Bar */}
         <View style={styles.searchBarContainer}>
-          <Ionicons name="search" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+          <Ionicons name="search" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Cari kafe, restoran, taman, atau aktivitas..."
-            placeholderTextColor="#9CA3AF"
+            placeholder="Cari tempat, aktivitas, atau area..."
+            placeholderTextColor="#94A3B8"
             value={searchQuery}
             onChangeText={setSearchQuery}
             returnKeyType="search"
           />
           {searchQuery ? (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={16} color="#94A3B8" />
             </TouchableOpacity>
           ) : null}
         </View>
 
-        {/* 3. React Bits OptionWheel for Categories */}
-        <OptionWheel
-          options={CATEGORY_OPTIONS}
-          selectedId={selectedCategory}
-          onSelect={(id) => setSelectedCategory(id)}
-        />
-
-        {/* 4. Area Pills Scroll */}
+        {/* 3. Horizontal Area Pills */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.areaScrollContainer}>
-          {AREA_FILTERS.map((area) => (
-            <TouchableOpacity
-              key={area}
-              style={[styles.areaPill, selectedArea === area && styles.areaPillActive]}
-              onPress={() => setSelectedArea(area)}
-              activeOpacity={0.8}>
-              <Text style={[styles.areaText, selectedArea === area && styles.areaTextActive]}>
-                {area}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {AREA_FILTERS.map((area) => {
+            const isActive = selectedArea === area;
+            return (
+              <TouchableOpacity
+                key={area}
+                style={[styles.areaPill, isActive && styles.areaPillActive]}
+                onPress={() => setSelectedArea(area)}
+                activeOpacity={0.8}>
+                <Text style={[styles.areaText, isActive && styles.areaTextActive]}>
+                  {area}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
+
+        {/* 4. Category Round Buttons Row */}
+        <View style={styles.categoryRow}>
+          {CATEGORY_ITEMS.map((cat) => {
+            const isCatActive = selectedCategory === cat.id;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.categoryItemCol}
+                onPress={() =>
+                  setSelectedCategory(isCatActive ? null : cat.id)
+                }
+                activeOpacity={0.8}>
+                <View
+                  style={[
+                    styles.categoryRoundIcon,
+                    { backgroundColor: isCatActive ? '#F43F5E' : cat.bgColor },
+                  ]}>
+                  <Ionicons
+                    name={cat.icon}
+                    size={20}
+                    color={isCatActive ? '#FFFFFF' : cat.iconColor}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.categoryLabel,
+                    isCatActive && { color: '#F43F5E', fontWeight: '700' },
+                  ]}>
+                  {cat.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* Status Toast */}
@@ -253,90 +230,33 @@ export default function ExploreScreen() {
         </View>
       )}
 
-      {/* Main Content Area */}
+      {/* 5. Places List */}
       {loading && !refreshing ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primaryBlue} />
-          <Text style={styles.loadingText}>Mencari tempat kencan romantis...</Text>
-        </View>
-      ) : activeTab === 'map' ? (
-        /* Map View with Pin Synchronization */
-        <View style={styles.mapViewContainer}>
-          <View style={styles.mapCanvas}>
-            <View style={styles.mapGridLines} />
-            <View style={styles.mapAreaLabelBox}>
-              <Text style={styles.mapAreaText}>Jakarta Pusat</Text>
-            </View>
-            <View style={[styles.mapAreaLabelBox, { top: '65%', left: '45%' }]}>
-              <Text style={styles.mapAreaText}>SCBD / Senopati</Text>
-            </View>
-
-            {/* Pinned Places */}
-            {displayedPlaces.map((place, idx) => {
-              const isSelected = selectedPinPlace?.id === place.id;
-              const topPos = 20 + ((idx * 27) % 55) + '%';
-              const leftPos = 15 + ((idx * 33) % 65) + '%';
-              return (
-                <TouchableOpacity
-                  key={place.id}
-                  style={[
-                    styles.mapPinBubble,
-                    { top: topPos as any, left: leftPos as any },
-                    isSelected && styles.mapPinBubbleSelected,
-                  ]}
-                  onPress={() => setSelectedPinPlace(place)}
-                  activeOpacity={0.85}>
-                  <Image source={{ uri: getPlaceImage(place) }} style={styles.mapPinImage} />
-                  {isSelected && <View style={styles.mapPinPulse} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Floating Selected Card */}
-          {selectedPinPlace && (
-            <TouchableOpacity
-              style={styles.floatingMapCard}
-              onPress={() => setSelectedDetailPlace(selectedPinPlace)}
-              activeOpacity={0.9}>
-              <Image source={{ uri: getPlaceImage(selectedPinPlace) }} style={styles.floatingMapCardThumb} />
-              <View style={styles.floatingMapCardCol}>
-                <Text style={styles.floatingMapCardTitle} numberOfLines={1}>
-                  {selectedPinPlace.name}
-                </Text>
-                {getPlaceRating(selectedPinPlace) ? (
-                  <View style={styles.ratingRow}>
-                    <Ionicons name="star" size={13} color="#F59E0B" />
-                    <Text style={styles.ratingText}>
-                      {getPlaceRating(selectedPinPlace)} • {selectedPinPlace.category || 'Kencan'}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.ratingText}>{selectedPinPlace.category || 'Kencan'}</Text>
-                  </View>
-                )}
-                {getPlacePrice(selectedPinPlace) && (
-                  <Text style={styles.floatingMapCardPrice}>{getPlacePrice(selectedPinPlace)}</Text>
-                )}
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
+          <ActivityIndicator size="large" color="#F43F5E" />
+          <Text style={styles.loadingText}>Memuat rekomendasi kencan Jakarta...</Text>
         </View>
       ) : (
-        /* List View */
         <ScrollView
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#F43F5E"
+            />
           }>
           {displayedPlaces.length > 0 ? (
             displayedPlaces.map((place) => {
               const isSaved = savedIds.has(place.id);
-              const rating = getPlaceRating(place);
-              const price = getPlacePrice(place);
+              const meta: any = place.metadata || {};
+              const rating = typeof meta.rating === 'number' ? meta.rating.toFixed(1) : (meta.rating || '4.7');
+              const reviews = meta.reviewsCount || '1.1K';
+              const price = meta.priceLevel || 'Rp 150.000 – 300.000 / orang';
+              const imgUrl =
+                meta.imageUrl ||
+                'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=700&q=80';
 
               return (
                 <TouchableOpacity
@@ -344,179 +264,125 @@ export default function ExploreScreen() {
                   style={styles.placeCard}
                   onPress={() => setSelectedDetailPlace(place)}
                   activeOpacity={0.92}>
+                  {/* Left: Thumbnail Image */}
                   <Image
-                    source={{ uri: getPlaceImage(place) }}
+                    source={{ uri: imgUrl }}
                     style={styles.placeCardThumb}
                     resizeMode="cover"
                   />
 
+                  {/* Middle: Details */}
                   <View style={styles.placeCardInfoCol}>
-                    <View style={styles.placeCardHeaderRow}>
-                      <Text style={styles.placeCardName} numberOfLines={1}>
-                        {place.name}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => handleToggleSave(place)}
-                        style={styles.heartBookmarkBtn}>
-                        <Ionicons
-                          name={isSaved ? 'heart' : 'heart-outline'}
-                          size={18}
-                          color={isSaved ? '#F43F5E' : '#9CA3AF'}
-                        />
-                      </TouchableOpacity>
-                    </View>
-
-                    {rating ? (
-                      <View style={styles.ratingRow}>
-                        <Ionicons name="star" size={12} color="#F59E0B" />
-                        <Text style={styles.ratingText}>
-                          {rating} • {place.category || 'Kencan'}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={styles.ratingRow}>
-                        <Text style={styles.ratingText}>{place.category || 'Kencan'}</Text>
-                      </View>
-                    )}
-
-                    <Text style={styles.placeCardArea} numberOfLines={1}>
-                      {place.address || 'Indonesia'}
+                    <Text style={styles.placeCardName} numberOfLines={1}>
+                      {place.name}
                     </Text>
 
-                    {price && <Text style={styles.placeCardPrice}>{price}</Text>}
+                    {/* Rating & Category */}
+                    <View style={styles.metaRow}>
+                      <Ionicons name="star" size={13} color="#F59E0B" style={{ marginRight: 4 }} />
+                      <Text style={styles.ratingNumber}>{rating}</Text>
+                      <Text style={styles.reviewsText}> ({reviews}) · {place.category || 'Restoran'}</Text>
+                    </View>
+
+                    {/* Location Pin */}
+                    <View style={styles.metaRow}>
+                      <Ionicons name="location-sharp" size={13} color="#64748B" style={{ marginRight: 4 }} />
+                      <Text style={styles.locationText} numberOfLines={1}>
+                        {place.address || 'Jakarta'}
+                      </Text>
+                    </View>
+
+                    {/* Price Range */}
+                    <View style={styles.metaRow}>
+                      <Ionicons name="pricetag" size={12} color="#64748B" style={{ marginRight: 4 }} />
+                      <Text style={styles.priceText} numberOfLines={1}>
+                        {price}
+                      </Text>
+                    </View>
                   </View>
+
+                  {/* Right: Heart Bookmark Icon */}
+                  <TouchableOpacity
+                    style={styles.heartButton}
+                    onPress={() => handleToggleSave(place)}
+                    activeOpacity={0.7}>
+                    <Ionicons
+                      name={isSaved ? 'heart' : 'heart-outline'}
+                      size={22}
+                      color="#F43F5E"
+                    />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               );
             })
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons name="search-outline" size={38} color="#9CA3AF" style={{ marginBottom: 10 }} />
+              <Ionicons name="search-outline" size={42} color="#94A3B8" style={{ marginBottom: 12 }} />
               <Text style={styles.emptyTitle}>Tidak ada tempat ditemukan</Text>
               <Text style={styles.emptySub}>
-                Coba gunakan kata kunci pencarian lain atau pilih area yang berbeda di seluruh Indonesia.
+                Coba pilih area lain atau reset kata kunci pencarian Anda.
               </Text>
-              <TouchableOpacity
-                style={styles.resetFilterBtn}
-                onPress={() => {
-                  setSearchQuery('');
-                  setSelectedArea('Semua Wilayah');
-                  setSelectedCategory('Semua');
-                }}>
-                <Text style={styles.resetFilterBtnText}>Reset Filter</Text>
-              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
       )}
 
-      {/* Place Detail Modal */}
+      {/* 6. Place Detail Modal */}
       <Modal visible={!!selectedDetailPlace} transparent animationType="slide">
-        <View style={styles.detailModalBackdrop}>
-          <View style={styles.detailModalContent}>
+        <View style={styles.detailBackdrop}>
+          <View style={styles.detailCard}>
             {selectedDetailPlace && (
               <>
                 <View style={styles.detailHeroImageContainer}>
                   <Image
-                    source={{ uri: getPlaceImage(selectedDetailPlace) }}
+                    source={{
+                      uri:
+                        (selectedDetailPlace.metadata as any)?.imageUrl ||
+                        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
+                    }}
                     style={styles.detailHeroImage}
                     resizeMode="cover"
                   />
                   <TouchableOpacity
-                    style={styles.detailBackButton}
+                    style={styles.detailCloseBtn}
                     onPress={() => setSelectedDetailPlace(null)}>
-                    <Ionicons name="arrow-back" size={20} color="#1F2937" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.detailShareButton}
-                    onPress={() => handleToggleSave(selectedDetailPlace)}>
-                    <Ionicons
-                      name={savedIds.has(selectedDetailPlace.id) ? 'heart' : 'heart-outline'}
-                      size={20}
-                      color={savedIds.has(selectedDetailPlace.id) ? '#F43F5E' : '#1F2937'}
-                    />
+                    <Ionicons name="close" size={20} color="#1F2937" />
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView
-                  style={{ maxHeight: 380 }}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ padding: 20 }}>
-                  <Text style={styles.detailPlaceTitle}>{selectedDetailPlace.name}</Text>
+                <View style={styles.detailBody}>
+                  <Text style={styles.detailTitle}>{selectedDetailPlace.name}</Text>
+                  <Text style={styles.detailCategoryBadge}>
+                    {(selectedDetailPlace.metadata as any)?.cuisine || selectedDetailPlace.category}
+                  </Text>
+                  <Text style={styles.detailAddress}>
+                    📍 {selectedDetailPlace.address || 'Jakarta'}
+                  </Text>
+                  <Text style={styles.detailPrice}>
+                    🏷️ {(selectedDetailPlace.metadata as any)?.priceLevel || 'Rp 150.000 – 300.000 / orang'}
+                  </Text>
+                  <Text style={styles.detailAtmosphere}>
+                    {(selectedDetailPlace.metadata as any)?.atmosphere ||
+                      'Tempat kencan pilihan sempurna dengan nuansa nyaman dan romantis untuk momen spesial berdua.'}
+                  </Text>
 
-                  {getPlaceRating(selectedDetailPlace) ? (
-                    <View style={styles.ratingRow}>
-                      <Ionicons name="star" size={15} color="#F59E0B" />
-                      <Text style={[styles.ratingText, { fontSize: 13, fontWeight: '700' }]}>
-                        {getPlaceRating(selectedDetailPlace)} • {selectedDetailPlace.category || 'Kencan'}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.ratingRow}>
-                      <Text style={[styles.ratingText, { fontSize: 13, fontWeight: '700' }]}>
-                        {selectedDetailPlace.category || 'Kencan'}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View style={styles.detailInfoRow}>
-                    <Ionicons name="location-outline" size={16} color="#6B7280" style={{ marginTop: 2 }} />
-                    <Text style={styles.detailInfoText}>
-                      {selectedDetailPlace.address || 'Indonesia'}
-                    </Text>
+                  <View style={styles.detailActionRow}>
+                    <TouchableOpacity
+                      style={styles.detailWishlistBtn}
+                      onPress={() => handleAddToWishlist(selectedDetailPlace)}>
+                      <Ionicons name="calendar-outline" size={16} color="#FFFFFF" />
+                      <Text style={styles.detailWishlistBtnText}>Tambah ke Rencana Kencan</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.detailSaveBtn}
+                      onPress={() => handleToggleSave(selectedDetailPlace)}>
+                      <Ionicons
+                        name={savedIds.has(selectedDetailPlace.id) ? 'heart' : 'heart-outline'}
+                        size={20}
+                        color="#F43F5E"
+                      />
+                    </TouchableOpacity>
                   </View>
-
-                  {getPlacePrice(selectedDetailPlace) && (
-                    <View style={styles.detailInfoRow}>
-                      <Ionicons name="wallet-outline" size={16} color="#2563EB" style={{ marginTop: 2 }} />
-                      <Text style={styles.detailInfoText}>{getPlacePrice(selectedDetailPlace)}</Text>
-                    </View>
-                  )}
-
-                  {getPlaceHours(selectedDetailPlace) && (
-                    <View style={styles.detailInfoRow}>
-                      <Ionicons name="time-outline" size={16} color="#059669" style={{ marginTop: 2 }} />
-                      <Text style={styles.detailInfoText}>{getPlaceHours(selectedDetailPlace)}</Text>
-                    </View>
-                  )}
-
-                  {selectedDetailPlace.metadata?.atmosphere && (
-                    <View style={styles.detailInfoRow}>
-                      <Ionicons name="sparkles-outline" size={16} color="#EC4899" style={{ marginTop: 2 }} />
-                      <Text style={styles.detailInfoText}>
-                        {selectedDetailPlace.metadata.atmosphere}
-                      </Text>
-                    </View>
-                  )}
-
-                  {selectedDetailPlace.metadata?.attribution && (
-                    <View style={[styles.detailInfoRow, { backgroundColor: '#F9FAFB', padding: 10, borderRadius: 10, marginTop: 6 }]}>
-                      <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
-                      <Text style={[styles.detailInfoText, { color: '#4B5563', fontSize: 11 }]}>
-                        Sumber data: {selectedDetailPlace.metadata.attribution}
-                      </Text>
-                    </View>
-                  )}
-                </ScrollView>
-
-                <View style={styles.detailActionButtonsRow}>
-                  <TouchableOpacity
-                    style={styles.detailPrimaryCTA}
-                    onPress={() => handleAddToPlan(selectedDetailPlace)}
-                    activeOpacity={0.88}>
-                    <Ionicons name="add-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.detailPrimaryCTAText}>Tambah ke Wishlist</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.detailSecondaryCTA}
-                    onPress={() => {
-                      setSelectedDetailPlace(null);
-                      setActiveTab('map');
-                      setSelectedPinPlace(selectedDetailPlace);
-                    }}
-                    activeOpacity={0.85}>
-                    <Ionicons name="map-outline" size={18} color="#1F2937" />
-                    <Text style={styles.detailSecondaryCTAText}>Buka Peta</Text>
-                  </TouchableOpacity>
                 </View>
               </>
             )}
@@ -530,104 +396,191 @@ export default function ExploreScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FAF9F6',
   },
   header: {
-    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'ios' ? 52 : 36,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 52 : 24,
-    paddingBottom: 8,
+    paddingBottom: 12,
+    backgroundColor: '#FAF9F6',
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F1F5F9',
   },
-  headerTitleRow: {
+  headerTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    marginBottom: 14,
   },
   screenTitle: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
-    color: '#1F2937',
+    color: '#1E293B',
+    letterSpacing: -0.5,
   },
-  screenSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
+  headerHeartBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  viewToggleGroup: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    padding: 3,
-  },
-  toggleBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  toggleBtnActive: {
-    backgroundColor: '#1F2937',
-  },
+  // Search Bar
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 14,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#1F2937',
-    padding: 0,
+    color: '#1E293B',
   },
+  // Area Filter Pills
   areaScrollContainer: {
+    paddingVertical: 2,
     gap: 8,
-    paddingVertical: 8,
+    marginBottom: 16,
   },
   areaPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   areaPillActive: {
     backgroundColor: '#F43F5E',
+    borderColor: '#F43F5E',
   },
   areaText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#4B5563',
+    color: '#475569',
   },
   areaTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  statusToast: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 56 : 30,
-    alignSelf: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  // Category Icons Row
+  categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    zIndex: 999,
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  categoryItemCol: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryRoundIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  // Places List Content
+  listContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 110,
+    gap: 14,
+  },
+  placeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  placeCardThumb: {
+    width: 96,
+    height: 96,
+    borderRadius: 16,
+    backgroundColor: '#E2E8F0',
+  },
+  placeCardInfoCol: {
+    flex: 1,
+    marginLeft: 14,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  placeCardName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingNumber: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  reviewsText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  locationText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  priceText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  heartButton: {
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Status Toast
+  statusToast: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 99,
   },
   statusToastText: {
-    fontSize: 12,
     color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '600',
   },
   centerContainer: {
@@ -638,301 +591,114 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 110,
-    gap: 12,
-    maxWidth: 520,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  placeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 12,
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-    alignItems: 'center',
-  },
-  placeCardThumb: {
-    width: 88,
-    height: 88,
-    borderRadius: 14,
-    backgroundColor: '#F3F4F6',
-    marginRight: 12,
-  },
-  placeCardInfoCol: {
-    flex: 1,
-  },
-  placeCardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  placeCardName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1F2937',
-    flex: 1,
-    marginRight: 6,
-  },
-  heartBookmarkBtn: {
-    padding: 4,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 3,
-  },
-  ratingText: {
-    fontSize: 11,
-    color: '#4B5563',
-    fontWeight: '600',
-  },
-  placeCardArea: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  placeCardPrice: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primaryBlue,
+    color: '#64748B',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 48,
+    paddingHorizontal: 20,
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
+    color: '#1E293B',
+    marginBottom: 6,
   },
   emptySub: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#64748B',
     textAlign: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
   },
-  resetFilterBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#EFF6FF',
-  },
-  resetFilterBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primaryBlue,
-  },
-  mapViewContainer: {
-    flex: 1,
-    position: 'relative',
-    backgroundColor: '#E5E7EB',
-  },
-  mapCanvas: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-    position: 'relative',
-  },
-  mapGridLines: {
-    ...StyleSheet.absoluteFill,
-    opacity: 0.05,
-    borderWidth: 1,
-    borderColor: '#000',
-  },
-  mapAreaLabelBox: {
-    position: 'absolute',
-    top: '25%',
-    left: '25%',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  mapAreaText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#9CA3AF',
-    letterSpacing: 0.5,
-  },
-  mapPinBubble: {
-    position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 4,
-  },
-  mapPinBubbleSelected: {
-    borderColor: '#F43F5E',
-    borderWidth: 3,
-    transform: [{ scale: 1.15 }],
-  },
-  mapPinImage: {
-    width: '100%',
-    height: '100%',
-  },
-  mapPinPulse: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(244, 63, 94, 0.2)',
-  },
-  floatingMapCard: {
-    position: 'absolute',
-    bottom: 95,
-    left: 16,
-    right: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  floatingMapCardThumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
-    marginRight: 12,
-  },
-  floatingMapCardCol: {
-    flex: 1,
-  },
-  floatingMapCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  floatingMapCardPrice: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primaryBlue,
-    marginTop: 2,
-  },
-  detailModalBackdrop: {
+  // Detail Modal
+  detailBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  detailModalContent: {
+  detailCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '90%',
     overflow: 'hidden',
+    maxHeight: '85%',
   },
   detailHeroImageContainer: {
-    width: '100%',
     height: 220,
+    width: '100%',
     position: 'relative',
-    backgroundColor: '#E5E7EB',
   },
   detailHeroImage: {
     width: '100%',
     height: '100%',
   },
-  detailBackButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailShareButton: {
+  detailCloseBtn: {
     position: 'absolute',
     top: 16,
     right: 16,
+    backgroundColor: '#FFFFFF',
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  detailPlaceTitle: {
+  detailBody: {
+    padding: 24,
+    gap: 8,
+  },
+  detailTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#1F2937',
-    marginBottom: 4,
+    color: '#1E293B',
   },
-  detailInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: 8,
-  },
-  detailInfoText: {
+  detailCategoryBadge: {
     fontSize: 13,
-    color: '#4B5563',
-    flex: 1,
-    lineHeight: 18,
+    color: '#F43F5E',
+    fontWeight: '700',
   },
-  detailActionButtonsRow: {
+  detailAddress: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  detailPrice: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  detailAtmosphere: {
+    fontSize: 14,
+    color: '#334155',
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  detailActionRow: {
     flexDirection: 'row',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    alignItems: 'center',
     gap: 12,
-    backgroundColor: '#FFFFFF',
+    marginTop: 16,
   },
-  detailPrimaryCTA: {
+  detailWishlistBtn: {
     flex: 1,
-    backgroundColor: colors.primaryBlue,
-    borderRadius: 14,
-    paddingVertical: 14,
+    height: 48,
+    backgroundColor: '#1E293B',
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
-  detailPrimaryCTAText: {
+  detailWishlistBtnText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
-  detailSecondaryCTA: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  detailSaveBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 6,
-  },
-  detailSecondaryCTAText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

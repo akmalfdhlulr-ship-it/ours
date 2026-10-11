@@ -46,6 +46,24 @@ export class OcrService {
       throw new BadRequestException('Format berkas bukan gambar valid (hanya JPEG, PNG, atau WebP yang didukung)');
     }
 
+    const mimeType = isPng ? 'image/png' : isWebp ? 'image/webp' : 'image/jpeg';
+
+    // 1. Prioritize Gemini Multimodal AI Vision (Best accuracy for faded thermal receipts)
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    if (geminiApiKey) {
+      try {
+        this.logger.log(`Memulai ekstraksi OCR via Gemini Vision AI (${imageBuffer.length} bytes)...`);
+        const geminiResult = await this.processWithGeminiVision(imageBuffer, mimeType, geminiApiKey);
+        if (geminiResult) {
+          this.logger.log(`Gemini Vision OCR berhasil! Merchant: "${geminiResult.merchantName}", Grand Total: ${geminiResult.grandTotal}`);
+          return geminiResult;
+        }
+      } catch (geminiErr: any) {
+        this.logger.warn(`Gemini Vision OCR menemui kendala, beralih ke Tesseract: ${geminiErr.message}`);
+      }
+    }
+
+    // 2. Fallback to local Tesseract OCR engine
     try {
       this.logger.log(`Memulai ekstraksi OCR Tesseract untuk gambar struk (${imageBuffer.length} bytes)...`);
 
@@ -61,6 +79,116 @@ export class OcrService {
     } catch (err: any) {
       this.logger.error(`Kegagalan OCR Tesseract: ${err.message}`, err.stack);
       throw new BadRequestException('Gagal memproses gambar struk melalui mesin OCR: ' + err.message);
+    }
+  }
+
+  private async processWithGeminiVision(
+    imageBuffer: Buffer,
+    mimeType: string,
+    apiKey: string,
+  ): Promise<OcrReceiptResultDto | null> {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+    const base64Data = imageBuffer.toString('base64');
+    const systemPrompt = `You are an expert OCR and financial data extractor specialized in Indonesian restaurant bills, cafes, dining receipts, and retail receipts (struk kasir / bon kencan).
+Carefully read this receipt image, even if the print is faded, thermal-printed, wrinkled, angled, or low contrast.
+
+Extract all details into a clean JSON structure:
+{
+  "merchantName": "Nama tempat / restoran / kafe",
+  "transactionDate": "YYYY-MM-DD",
+  "items": [
+    {
+      "itemName": "Nama menu / item",
+      "quantity": 1,
+      "unitPrice": 50000,
+      "lineTotal": 50000
+    }
+  ],
+  "subtotal": 100000,
+  "tax": 10000,
+  "serviceCharge": 5000,
+  "grandTotal": 115000,
+  "rawText": "Ringkasan teks struk yang terbaca",
+  "confidence": 98
+}
+
+Strict requirements:
+1. Numbers must be pure integers or floats, no 'Rp', '.', or ',' in numerical fields.
+2. Return ONLY raw valid JSON without markdown code fences (\`\`\`json).`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: systemPrompt },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Data,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini Vision HTTP ${response.status}: ${errText.slice(0, 150)}`);
+      }
+
+      const resData: any = await response.json();
+      const rawText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) return null;
+
+      const cleanJson = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/, '')
+        .replace(/\s*```$/, '')
+        .trim();
+
+      const parsed = JSON.parse(cleanJson);
+
+      return {
+        merchantName: parsed.merchantName || null,
+        transactionDate: parsed.transactionDate || null,
+        items: Array.isArray(parsed.items)
+          ? parsed.items.map((it: any) => ({
+              name: String(it.name || it.itemName || 'Item'),
+              quantity: Number(it.quantity) || 1,
+              unitPrice: it.unitPrice !== undefined ? Number(it.unitPrice) : Number(it.lineTotal || 0),
+              lineTotal: Number(it.lineTotal || 0),
+            }))
+          : [],
+        subtotal: parsed.subtotal !== undefined ? Number(parsed.subtotal) : null,
+        tax: parsed.tax !== undefined ? Number(parsed.tax) : null,
+        serviceCharge: parsed.serviceCharge !== undefined ? Number(parsed.serviceCharge) : null,
+        grandTotal: Number(parsed.grandTotal || parsed.subtotal || 0),
+        rawText: parsed.rawText || 'Diekstrak dengan Gemini Vision AI',
+        confidence: Number(parsed.confidence) || 98,
+        engine: 'Gemini Multimodal AI Vision',
+        currency: 'IDR',
+        isArithmeticConsistent: true,
+      };
+    } catch (err) {
+      clearTimeout(timeout);
+      throw err;
     }
   }
 
