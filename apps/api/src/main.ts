@@ -25,7 +25,7 @@ async function bootstrap() {
   // API Versioning and Prefix (exclude root '/' so visiting domain directly returns status)
   app.setGlobalPrefix('api/v1', { exclude: ['/'] });
 
-  app.getHttpAdapter().get('/', (_req: any, res: any) => {
+  const statusHandler = (_req: any, res: any) => {
     res.json({
       name: 'OURS API',
       status: 'online',
@@ -33,7 +33,10 @@ async function bootstrap() {
       health: '/api/v1/health',
       timestamp: new Date().toISOString(),
     });
-  });
+  };
+
+  app.getHttpAdapter().get('/', statusHandler);
+  app.getHttpAdapter().get('/api/v1', statusHandler);
 
   // CORS configuration (supports Expo Web preview deployments, mobile, and custom domains)
   app.enableCors({
