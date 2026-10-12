@@ -104,15 +104,37 @@ export class MediaController {
     @Query('key') key: string,
     @Res() res: Response,
   ) {
-    // Verified tenant media delivery stream
-    res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    // Return empty 1x1 transparent SVG/GIF or image fallback
-    res.send(
-      Buffer.from(
-        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-        'base64',
-      ),
-    );
+    if (!key) {
+      return res.status(400).send('Missing key');
+    }
+    try {
+      const asset = await this.mediaService.getMediaByKey(key);
+      if (asset?.metadata && typeof asset.metadata === 'object') {
+        const dataUrl = (asset.metadata as any).dataUrl;
+        if (dataUrl && typeof dataUrl === 'string') {
+          const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1] || asset.mimeType || 'image/jpeg';
+            const buffer = Buffer.from(match[2], 'base64');
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.send(buffer);
+          }
+        }
+      }
+    } catch {
+      // Fallback below
+    }
+
+    // Clean branded SVG placeholder if missing
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+      <rect width="100%" height="100%" fill="#F8F9F7"/>
+      <circle cx="200" cy="130" r="40" fill="#E6EBFA"/>
+      <path d="M185 125 L215 125 L215 145 L185 145 Z" fill="#3657D6"/>
+      <text x="200" y="200" font-family="system-ui, sans-serif" font-size="14" fill="#666" text-anchor="middle">OURS Ruang Kita Photo</text>
+    </svg>`;
+    return res.send(svg);
   }
 }

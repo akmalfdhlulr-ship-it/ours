@@ -62,16 +62,38 @@ export default function ScanReceiptScreen() {
     ).start();
   }, [scanlineAnim]);
 
+async function uriToBase64(uri: string): Promise<string> {
+  if (uri.startsWith('data:')) return uri;
+  try {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn('uriToBase64 fallback for scan:', err);
+    return uri;
+  }
+}
+
   // Process image with genuine OCR
   const processImageOcr = async (uri: string, base64Data?: string | null) => {
     setIsProcessingOcr(true);
     setCapturedImageUri(uri);
-    setOcrStepText('Mengirim gambar ke mesin OCR AI...');
+    setOcrStepText('Menyiapkan gambar struk...');
 
     try {
+      let resolvedBase64 = base64Data;
+      if (!resolvedBase64 && uri) {
+        resolvedBase64 = await uriToBase64(uri);
+      }
+
       const reqPayload: { imageBase64?: string; imageUrl?: string } = {};
-      if (base64Data && base64Data.trim().length > 0) {
-        reqPayload.imageBase64 = base64Data;
+      if (resolvedBase64 && resolvedBase64.trim().length > 0) {
+        reqPayload.imageBase64 = resolvedBase64;
       } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
         reqPayload.imageUrl = uri;
       }
@@ -79,8 +101,33 @@ export default function ScanReceiptScreen() {
       if (!reqPayload.imageBase64 && !reqPayload.imageUrl) {
         setIsProcessingOcr(false);
         Alert.alert(
-          'Gambar Tidak Ditemukan',
-          'Pastikan Anda telah mengambil foto struk dari kamera atau memilih gambar dari galeri.'
+          'Gambar Kurang Jelas',
+          'Pastikan foto struk terlihat atau kamu bisa langsung memasukkan nominal secara manual.',
+          [
+            { text: 'Coba Lagi', style: 'cancel' },
+            {
+              text: '✍️ Input Manual',
+              onPress: () => {
+                router.push({
+                  pathname: '/receipts/[id]',
+                  params: {
+                    id: 'manual-entry',
+                    data: JSON.stringify({
+                      merchantName: 'Tempat Kencan',
+                      category: 'Kuliner & Dining',
+                      items: [{ qty: '1x', name: 'Item Kencan', category: 'Menu', price: 'Rp 0', priceNumber: 0 }],
+                      subtotal: 0,
+                      tax: 0,
+                      grandTotal: 0,
+                      accuracy: 100,
+                      date: 'Hari Ini',
+                      receiptImageUri: uri,
+                    }),
+                  },
+                } as any);
+              },
+            },
+          ]
         );
         return;
       }
@@ -92,8 +139,33 @@ export default function ScanReceiptScreen() {
       if (!result || (!result.grandTotal && (!result.items || result.items.length === 0))) {
         setIsProcessingOcr(false);
         Alert.alert(
-          'Struk Tidak Terbaca',
-          'Sistem OCR tidak dapat mendeteksi teks transaksi atau rincian harga dari foto ini. Pastikan struk terlihat jelas, tegak lurus, tidak terlipat, dan pencahayaan cukup.'
+          'Struk Kurang Terbaca',
+          'Teks struk belum terdeteksi sempurna. Mau isi nominal dan nama tempat kencan secara manual?',
+          [
+            { text: 'Foto Ulang', style: 'cancel' },
+            {
+              text: '✍️ Isi Manual',
+              onPress: () => {
+                router.push({
+                  pathname: '/receipts/[id]',
+                  params: {
+                    id: 'manual-entry',
+                    data: JSON.stringify({
+                      merchantName: 'Tempat Kencan',
+                      category: 'Kuliner & Dining',
+                      items: [{ qty: '1x', name: 'Kencan Berdua', category: 'Menu', price: 'Rp 0', priceNumber: 0 }],
+                      subtotal: 0,
+                      tax: 0,
+                      grandTotal: 0,
+                      accuracy: 100,
+                      date: 'Hari Ini',
+                      receiptImageUri: uri,
+                    }),
+                  },
+                } as any);
+              },
+            },
+          ]
         );
         return;
       }
@@ -141,9 +213,33 @@ export default function ScanReceiptScreen() {
     } catch (err: any) {
       setIsProcessingOcr(false);
       Alert.alert(
-        'Gagal Membaca Struk',
-        err?.message ||
-          'Pastikan struk terlihat jelas, tidak buram, dan pencahayaan cukup. Silakan coba lagi.'
+        'Struk Kurang Jelas',
+        'Foto berhasil diambil tetapi sistem AI tidak dapat membaca teks. Mau masukkan nominal secara manual?',
+        [
+          { text: 'Foto Ulang', style: 'cancel' },
+          {
+            text: '✍️ Isi Manual',
+            onPress: () => {
+              router.push({
+                pathname: '/receipts/[id]',
+                params: {
+                  id: 'manual-entry',
+                  data: JSON.stringify({
+                    merchantName: 'Tempat Kencan',
+                    category: 'Kuliner & Dining',
+                    items: [{ qty: '1x', name: 'Kencan Berdua', category: 'Menu', price: 'Rp 0', priceNumber: 0 }],
+                    subtotal: 0,
+                    tax: 0,
+                    grandTotal: 0,
+                    accuracy: 100,
+                    date: 'Hari Ini',
+                    receiptImageUri: uri,
+                  }),
+                },
+              } as any);
+            },
+          },
+        ]
       );
     }
   };
@@ -350,11 +446,31 @@ export default function ScanReceiptScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Hint Info */}
-            <View style={styles.islandSideBtn}>
-              <Ionicons name="receipt-outline" size={26} color="rgba(255, 255, 255, 0.6)" />
-              <Text style={[styles.islandSideBtnText, { color: 'rgba(255, 255, 255, 0.6)' }]}>Struk Asli</Text>
-            </View>
+            {/* Input Manual Shortcut */}
+            <TouchableOpacity
+              style={styles.islandSideBtn}
+              onPress={() => {
+                router.push({
+                  pathname: '/receipts/[id]',
+                  params: {
+                    id: 'manual-entry',
+                    data: JSON.stringify({
+                      merchantName: 'Tempat Kencan',
+                      category: 'Kuliner & Dining',
+                      items: [{ qty: '1x', name: 'Kencan Berdua', category: 'Menu', price: 'Rp 0', priceNumber: 0 }],
+                      subtotal: 0,
+                      tax: 0,
+                      grandTotal: 0,
+                      accuracy: 100,
+                      date: 'Hari Ini',
+                    }),
+                  },
+                } as any);
+              }}
+              activeOpacity={0.8}>
+              <Ionicons name="create-outline" size={26} color="#FFFFFF" />
+              <Text style={styles.islandSideBtnText}>Manual ✍️</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>

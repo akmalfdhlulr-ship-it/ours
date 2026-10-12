@@ -123,6 +123,41 @@ export default function ReceiptResultScreen() {
             <Ionicons name="scan" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
             <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Pindai Struk Sekarang</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1.5,
+              borderColor: luminousColors.primary,
+              paddingHorizontal: 24,
+              paddingVertical: 14,
+              borderRadius: 24,
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginTop: 12,
+            }}
+            onPress={() => {
+              router.replace({
+                pathname: '/receipts/[id]',
+                params: {
+                  id: 'manual-entry',
+                  data: JSON.stringify({
+                    merchantName: 'Tempat Kencan',
+                    category: 'Kuliner & Dining',
+                    items: [{ qty: '1x', name: 'Kencan Berdua', category: 'Menu', price: 'Rp 50.000', priceNumber: 50000 }],
+                    subtotal: 50000,
+                    tax: 5000,
+                    grandTotal: 55000,
+                    accuracy: 100,
+                    date: 'Hari Ini',
+                  }),
+                },
+              } as any);
+            }}
+            activeOpacity={0.88}>
+            <Ionicons name="create-outline" size={20} color={luminousColors.primary} style={{ marginRight: 8 }} />
+            <Text style={{ color: luminousColors.primary, fontWeight: '700', fontSize: 15 }}>+ Catat Pengeluaran Manual ✍️</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );

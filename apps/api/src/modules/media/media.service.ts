@@ -239,6 +239,12 @@ export class MediaService {
     return this.mapToItem(asset);
   }
 
+  async getMediaByKey(storageKey: string): Promise<any> {
+    return this.prisma.mediaAsset.findFirst({
+      where: { storageKey },
+    });
+  }
+
   private async mapToItem(asset: any): Promise<MediaAssetItem> {
     const metaUrl = (asset.metadata as any)?.dataUrl || (asset.metadata as any)?.secureUrl;
     const secureUrl =

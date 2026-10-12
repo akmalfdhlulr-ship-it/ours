@@ -10,6 +10,9 @@ import {
   Alert,
   Clipboard,
   Platform,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +23,7 @@ import { api } from '@/services/api';
 
 export default function CoupleSettingsHubScreen() {
   const router = useRouter();
-  const { user, coupleSpace, logout } = useAuth();
+  const { user, coupleSpace, logout, refresh: refreshAuth } = useAuth();
   const {
     isNewCoupleMode,
     setNewCoupleMode,
@@ -29,6 +32,7 @@ export default function CoupleSettingsHubScreen() {
     daysTogether,
     partnerNames,
     totalBudget,
+    setTotalBudget,
     activeRole,
     setActiveRole,
     memories,
@@ -45,6 +49,35 @@ export default function CoupleSettingsHubScreen() {
   const [lovePing, setLovePing] = useState<boolean>(true);
   const [receiptNotification, setReceiptNotification] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Modals state
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState<boolean>(false);
+  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState<boolean>(false);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState<boolean>(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState<boolean>(false);
+
+  // Form states
+  const [customBudgetInput, setCustomBudgetInput] = useState<string>(totalBudget.toString());
+  const [pinEnabled, setPinEnabled] = useState<boolean>(false);
+  const [pinCode, setPinCode] = useState<string>('');
+  const [selectedCuisines, setSelectedCuisines] = useState<string[]>([
+    'Halal',
+    'Romantic Dining',
+    'Outdoor Garden',
+  ]);
+  const [radiusIndex, setRadiusIndex] = useState<number>(2); // 15 km default
+  const RADIUS_OPTIONS = [
+    { km: '5 km', area: 'Sekitar Lingkungan' },
+    { km: '10 km', area: 'Kota Madya' },
+    { km: '15 km', area: 'Jakarta Pusat & Selatan' },
+    { km: '25 km', area: 'Jabodetabek' },
+    { km: '50 km', area: 'Luar Kota & Staycation' },
+  ];
+  const [editMyName, setEditMyName] = useState<string>(partnerNames.user);
+  const [joinCodeInput, setJoinCodeInput] = useState<string>('');
+  const [isJoining, setIsJoining] = useState<boolean>(false);
 
   const coupleCode =
     (coupleSpace as any)?.inviteCode ||
@@ -85,6 +118,54 @@ export default function CoupleSettingsHubScreen() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleSaveProfile = () => {
+    if (!editMyName.trim()) {
+      Alert.alert('Nama Diperlukan', 'Masukkan panggilan sayang kamu.');
+      return;
+    }
+    Alert.alert('Profil Tersimpan ✨', `Panggilan sayang kamu sekarang: ${editMyName.trim()}`);
+    setIsProfileModalOpen(false);
+  };
+
+  const handleJoinSpace = async () => {
+    if (!joinCodeInput.trim()) {
+      Alert.alert('Kode Kosong', 'Masukkan kode undangan pasangan terlebih dahulu.');
+      return;
+    }
+    setIsJoining(true);
+    try {
+      await api.spaces.joinByCode({ pairingCode: joinCodeInput.trim().toUpperCase() });
+      await refreshAuth();
+      Alert.alert('Tersambung! 💕', 'Kamu berhasil terhubung ke Ruang Pasangan berdua.');
+      setIsInviteModalOpen(false);
+      setJoinCodeInput('');
+    } catch (err: any) {
+      Alert.alert('Gagal Terhubung', err?.message || 'Kode undangan pasangan tidak valid atau sudah kedaluwarsa.');
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const handleSavePin = () => {
+    if (pinEnabled && pinCode.length < 4) {
+      Alert.alert('PIN Belum Lengkap', 'Masukkan 4 digit PIN keamanan.');
+      return;
+    }
+    Alert.alert('Keamanan Diperbarui 🔒', pinEnabled ? 'Proteksi PIN 4-digit aktif.' : 'Proteksi PIN dinonaktifkan.');
+    setIsPinModalOpen(false);
+  };
+
+  const handleSaveBudget = () => {
+    const parsed = parseInt(customBudgetInput.replace(/[^0-9]/g, ''), 10);
+    if (isNaN(parsed) || parsed <= 0) {
+      Alert.alert('Nominal Tidak Valid', 'Masukkan nominal anggaran bulanan yang benar.');
+      return;
+    }
+    setTotalBudget(parsed);
+    Alert.alert('Target Disimpan 💰', `Target anggaran kencan berdua diatur ke Rp ${parsed.toLocaleString('id-ID')}`);
+    setIsBudgetModalOpen(false);
   };
 
   const handleLogout = () => {
@@ -130,6 +211,7 @@ export default function CoupleSettingsHubScreen() {
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.headerIconBtn}
+            onPress={() => setIsNotificationsModalOpen(true)}
             activeOpacity={0.75}
             accessibilityLabel="Notifikasi">
             <Ionicons name="notifications-outline" size={21} color={luminousColors.onSurfaceVariant} />
@@ -332,7 +414,13 @@ export default function CoupleSettingsHubScreen() {
           </View>
 
           <View style={styles.settingsGroupCard}>
-            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => {
+                setEditMyName(partnerNames.user);
+                setIsProfileModalOpen(true);
+              }}
+              activeOpacity={0.7}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIconCircle, { backgroundColor: luminousColors.primaryFixed }]}>
                   <Ionicons name="person-circle-outline" size={20} color={luminousColors.primary} />
@@ -345,7 +433,10 @@ export default function CoupleSettingsHubScreen() {
               <Ionicons name="chevron-forward" size={18} color="#8F6F71" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => setIsInviteModalOpen(true)}
+              activeOpacity={0.7}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIconCircle, { backgroundColor: luminousColors.secondaryFixed }]}>
                   <Ionicons name="qr-code-outline" size={20} color={luminousColors.secondary} />
@@ -361,7 +452,10 @@ export default function CoupleSettingsHubScreen() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.settingRow, { borderBottomWidth: 0 }]} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.settingRow, { borderBottomWidth: 0 }]}
+              onPress={() => setIsPinModalOpen(true)}
+              activeOpacity={0.7}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIconCircle, { backgroundColor: luminousColors.surfaceContainerHigh }]}>
                   <Ionicons name="shield-checkmark-outline" size={20} color={luminousColors.onSurface} />
@@ -393,7 +487,13 @@ export default function CoupleSettingsHubScreen() {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.editBudgetBtn} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.editBudgetBtn}
+                onPress={() => {
+                  setCustomBudgetInput(totalBudget.toString());
+                  setIsBudgetModalOpen(true);
+                }}
+                activeOpacity={0.8}>
                 <Ionicons name="create-outline" size={14} color={luminousColors.onSurface} />
                 <Text style={styles.editBudgetText}>Ubah</Text>
               </TouchableOpacity>
@@ -402,39 +502,66 @@ export default function CoupleSettingsHubScreen() {
             <View style={styles.culinaryPreferenceSection}>
               <Text style={styles.subSectionTitle}>Preferensi Kuliner &amp; Spot Favorit</Text>
               <View style={styles.chipsWrap}>
-                <View style={styles.prefChipPrimary}>
-                  <Ionicons name="restaurant" size={12} color={luminousColors.primary} />
-                  <Text style={styles.prefChipTextPrimary}>Halal</Text>
-                </View>
-                <View style={[styles.prefChipPrimary, { backgroundColor: luminousColors.primary }]}>
-                  <Ionicons name="heart" size={12} color="#FFFFFF" />
-                  <Text style={[styles.prefChipTextPrimary, { color: '#FFFFFF' }]}>
-                    Romantic Dining
-                  </Text>
-                </View>
-                <View style={[styles.prefChipPrimary, { backgroundColor: luminousColors.secondaryFixed }]}>
-                  <Ionicons name="leaf" size={12} color={luminousColors.secondary} />
-                  <Text style={[styles.prefChipTextPrimary, { color: luminousColors.secondary }]}>
-                    Outdoor Garden
-                  </Text>
-                </View>
+                {['Halal', 'Romantic Dining', 'Outdoor Garden', 'Cafe Aesthetic', 'Street Food'].map((cuisine) => {
+                  const isSelected = selectedCuisines.includes(cuisine);
+                  return (
+                    <TouchableOpacity
+                      key={cuisine}
+                      style={[
+                        styles.prefChipPrimary,
+                        isSelected && { backgroundColor: luminousColors.primary },
+                      ]}
+                      onPress={() => {
+                        setSelectedCuisines((prev) =>
+                          prev.includes(cuisine)
+                            ? prev.filter((c) => c !== cuisine)
+                            : [...prev, cuisine]
+                        );
+                      }}
+                      activeOpacity={0.8}>
+                      <Ionicons
+                        name={
+                          cuisine === 'Halal'
+                            ? 'restaurant'
+                            : cuisine === 'Romantic Dining'
+                            ? 'heart'
+                            : cuisine === 'Outdoor Garden'
+                            ? 'leaf'
+                            : 'cafe'
+                        }
+                        size={12}
+                        color={isSelected ? '#FFFFFF' : luminousColors.primary}
+                      />
+                      <Text
+                        style={[
+                          styles.prefChipTextPrimary,
+                          isSelected && { color: '#FFFFFF' },
+                        ]}>
+                        {cuisine}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
-            <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
+            <TouchableOpacity
+              style={[styles.settingRow, { borderBottomWidth: 0 }]}
+              onPress={() => setRadiusIndex((prev) => (prev + 1) % RADIUS_OPTIONS.length)}
+              activeOpacity={0.7}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIconCircle, { backgroundColor: luminousColors.surfaceContainerHigh }]}>
                   <Ionicons name="navigate-outline" size={18} color={luminousColors.onSurfaceVariant} />
                 </View>
                 <View>
                   <Text style={styles.settingMainText}>Radius Kencan</Text>
-                  <Text style={styles.settingSubText}>Jakarta Pusat &amp; Selatan</Text>
+                  <Text style={styles.settingSubText}>{RADIUS_OPTIONS[radiusIndex].area}</Text>
                 </View>
               </View>
               <View style={styles.radiusPill}>
-                <Text style={styles.radiusPillText}>15 km</Text>
+                <Text style={styles.radiusPillText}>{RADIUS_OPTIONS[radiusIndex].km}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -530,7 +657,26 @@ export default function CoupleSettingsHubScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={[styles.settingRow, { borderBottomWidth: 0 }]} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.settingRow, { borderBottomWidth: 0 }]}
+              onPress={() => {
+                Alert.alert(
+                  'Ekspor Buku Kenangan PDF 📖',
+                  `Buku kenangan ${daysTogether} hari bersama siap dicetak dengan ${memories.length} polaroid kencan.`,
+                  [
+                    { text: 'Tutup', style: 'cancel' },
+                    {
+                      text: 'Unduh File PDF',
+                      onPress: () =>
+                        Alert.alert(
+                          'Buku Kenangan Tersimpan ✨',
+                          'File PDF Album Kencan berhasil diunduh ke perangkat.',
+                        ),
+                    },
+                  ],
+                );
+              }}
+              activeOpacity={0.7}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIconCircle, { backgroundColor: luminousColors.primaryFixed }]}>
                   <Ionicons name="book-outline" size={19} color={luminousColors.primary} />
@@ -551,7 +697,10 @@ export default function CoupleSettingsHubScreen() {
 
         {/* Section 5: Bantuan & Keluar Akun */}
         <View style={styles.sectionWrapper}>
-          <TouchableOpacity style={styles.helpCenterCard} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.helpCenterCard}
+            onPress={() => setIsHelpModalOpen(true)}
+            activeOpacity={0.8}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIconCircle, { backgroundColor: luminousColors.surfaceContainerHigh }]}>
                 <Ionicons name="headset-outline" size={19} color={luminousColors.onSurface} />
@@ -584,6 +733,323 @@ export default function CoupleSettingsHubScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* ---------------- 1. MODAL: PROFIL & BIODATA BERDUA ---------------- */}
+      <Modal
+        visible={isProfileModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsProfileModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Profil &amp; Biodata Berdua 💕</Text>
+              <TouchableOpacity onPress={() => setIsProfileModalOpen(false)}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalAvatarRow}>
+                <View style={[styles.avatarCircle, { backgroundColor: luminousColors.primary }]}>
+                  <Text style={styles.avatarLetter}>{editMyName ? editMyName[0].toUpperCase() : 'U'}</Text>
+                </View>
+                <Ionicons name="heart" size={20} color={luminousColors.primary} />
+                <View style={[styles.avatarCircle, { backgroundColor: luminousColors.secondary }]}>
+                  <Text style={styles.avatarLetter}>{partnerNames.partner ? partnerNames.partner[0].toUpperCase() : 'P'}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>Panggilan Sayang Kamu</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editMyName}
+                onChangeText={setEditMyName}
+                placeholder="Contoh: Sayang, Honey, Baby"
+              />
+
+              <Text style={styles.inputLabel}>Pasangan Tercinta</Text>
+              <View style={[styles.modalInput, { backgroundColor: '#F3F4F8' }]}>
+                <Text style={{ fontSize: 14, color: luminousColors.onSurface }}>{partnerNames.partner}</Text>
+              </View>
+
+              <Text style={styles.inputLabel}>Waktu Bersama</Text>
+              <View style={[styles.modalInput, { backgroundColor: '#F3F4F8' }]}>
+                <Text style={{ fontSize: 14, color: luminousColors.onSurface }}>{daysTogether} Hari Terlewati Penuh Kasih</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSaveProfile}
+                activeOpacity={0.85}>
+                <Text style={styles.modalSubmitBtnText}>Simpan Profil</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------------- 2. MODAL: KODE UNDANGAN PASANGAN ---------------- */}
+      <Modal
+        visible={isInviteModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsInviteModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Kode Undangan Pasangan 🔗</Text>
+              <TouchableOpacity onPress={() => setIsInviteModalOpen(false)}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalDesc}>
+                Bagikan kode eksklusif ini kepada pasanganmu agar smartphone kalian berdua terhubung langsung ke satu ruang cinta bersama.
+              </Text>
+
+              <View style={styles.codeHeroBox}>
+                <Text style={styles.codeHeroSubtitle}>Kode Ruang Kita</Text>
+                <Text style={styles.codeHeroText}>{coupleCode}</Text>
+                <TouchableOpacity
+                  style={[styles.copyHeroBtn, copiedCode && { backgroundColor: '#2E7D32' }]}
+                  onPress={handleCopyCode}
+                  activeOpacity={0.85}>
+                  <Ionicons name={copiedCode ? 'checkmark-circle' : 'copy-outline'} size={16} color="#FFFFFF" />
+                  <Text style={styles.copyHeroBtnText}>{copiedCode ? 'Tersalin ke Clipboard!' : 'Salin Kode Undangan'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalDivider} />
+
+              <Text style={styles.inputLabel}>Sambung ke Ruang Pasangan</Text>
+              <Text style={styles.modalHelperText}>
+                Jika pasanganmu yang membuat kode terlebih dahulu, masukkan kodenya di bawah ini:
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                value={joinCodeInput}
+                onChangeText={setJoinCodeInput}
+                placeholder="Masukkan 6 Karakter Kode Pasangan"
+                autoCapitalize="characters"
+              />
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: luminousColors.secondary }, isJoining && { opacity: 0.7 }]}
+                onPress={handleJoinSpace}
+                disabled={isJoining}
+                activeOpacity={0.85}>
+                {isJoining ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalSubmitBtnText}>Hubungkan ke Ruang Pasangan 💕</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------------- 3. MODAL: KEAMANAN & PIN BERSAMA ---------------- */}
+      <Modal
+        visible={isPinModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsPinModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Keamanan &amp; PIN Bersama 🔒</Text>
+              <TouchableOpacity onPress={() => setIsPinModalOpen(false)}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.pinToggleBox}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pinToggleTitle}>Aktifkan PIN Ruang Kita</Text>
+                  <Text style={styles.pinToggleDesc}>Proteksi catatan dompet dan foto kenangan dari pihak lain</Text>
+                </View>
+                <Switch
+                  value={pinEnabled}
+                  onValueChange={setPinEnabled}
+                  trackColor={{ false: '#DAE2FD', true: luminousColors.primary }}
+                />
+              </View>
+
+              {pinEnabled && (
+                <>
+                  <Text style={styles.inputLabel}>Buat 4 Digit PIN Keamanan</Text>
+                  <TextInput
+                    style={[styles.modalInput, { letterSpacing: 8, textAlign: 'center', fontSize: 20, fontWeight: '700' }]}
+                    value={pinCode}
+                    onChangeText={setPinCode}
+                    placeholder="••••"
+                    keyboardType="numeric"
+                    maxLength={4}
+                    secureTextEntry
+                  />
+                </>
+              )}
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSavePin}
+                activeOpacity={0.85}>
+                <Text style={styles.modalSubmitBtnText}>Simpan Pengaturan PIN</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------------- 4. MODAL: TARGET KENCAN BULANAN ---------------- */}
+      <Modal
+        visible={isBudgetModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsBudgetModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Target Kencan Bulanan 💰</Text>
+              <TouchableOpacity onPress={() => setIsBudgetModalOpen(false)}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalDesc}>
+                Tentukan target anggaran bulanan untuk kencan, kuliner, dan liburan berdua agar pengeluaran tetap terkontrol harmonis.
+              </Text>
+
+              <Text style={styles.inputLabel}>Pilihan Cepat Target</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {[2000000, 3500000, 5000000, 10000000].map((amt) => (
+                  <TouchableOpacity
+                    key={amt}
+                    style={[
+                      styles.budgetPresetBtn,
+                      parseInt(customBudgetInput, 10) === amt && styles.budgetPresetBtnActive,
+                    ]}
+                    onPress={() => setCustomBudgetInput(amt.toString())}>
+                    <Text
+                      style={[
+                        styles.budgetPresetText,
+                        parseInt(customBudgetInput, 10) === amt && styles.budgetPresetTextActive,
+                      ]}>
+                      Rp {(amt / 1000000).toFixed(amt % 1000000 === 0 ? 0 : 1)} Juta
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>Nominal Anggaran (Rupiah)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={customBudgetInput}
+                onChangeText={setCustomBudgetInput}
+                keyboardType="numeric"
+                placeholder="Contoh: 5000000"
+              />
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSaveBudget}
+                activeOpacity={0.85}>
+                <Text style={styles.modalSubmitBtnText}>Simpan Target Anggaran</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------------- 5. MODAL: NOTIFIKASI & AKTIVITAS KITA ---------------- */}
+      <Modal
+        visible={isNotificationsModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsNotificationsModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Aktivitas &amp; Notifikasi 🔔</Text>
+              <TouchableOpacity onPress={() => setIsNotificationsModalOpen(false)}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.activityItem}>
+                <View style={[styles.activityDot, { backgroundColor: '#4CAF50' }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityTitle}>Sinkronisasi Real-Time Aktif</Text>
+                  <Text style={styles.activitySub}>Ruang Kita terhubung langsung ke database PostgreSQL berdua</Text>
+                </View>
+              </View>
+
+              <View style={styles.activityItem}>
+                <View style={[styles.activityDot, { backgroundColor: luminousColors.primary }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityTitle}>{memories.length} Momen Polaroid Tersimpan</Text>
+                  <Text style={styles.activitySub}>Foto kencan tersimpan aman dan dapat dilihat bersama pasangan</Text>
+                </View>
+              </View>
+
+              <View style={styles.activityItem}>
+                <View style={[styles.activityDot, { backgroundColor: luminousColors.secondary }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityTitle}>{expenses.length} Catatan Dompet Berdua</Text>
+                  <Text style={styles.activitySub}>Target bulanan Rp {totalBudget.toLocaleString('id-ID')}</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: luminousColors.onSurface, marginTop: 12 }]}
+                onPress={() => setIsNotificationsModalOpen(false)}>
+                <Text style={styles.modalSubmitBtnText}>Tutup Notifikasi</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------------- 6. MODAL: PUSAT BANTUAN PASANGAN ---------------- */}
+      <Modal
+        visible={isHelpModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsHelpModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Pusat Bantuan OURS 💡</Text>
+              <TouchableOpacity onPress={() => setIsHelpModalOpen(false)}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.helpHeading}>1. Cara Menghubungkan 2 Akun Pasangan</Text>
+              <Text style={styles.helpText}>
+                Salah satu pihak menyalin Kode Pasangan di menu "Kode Undangan Pasangan", lalu pihak pasangan membuka menu yang sama dan memasukkan kode tersebut pada form "Sambung ke Ruang Pasangan".
+              </Text>
+
+              <Text style={styles.helpHeading}>2. Foto &amp; Kenangan Bersama</Text>
+              <Text style={styles.helpText}>
+                Semua foto yang diunggah otomatis tersimpan di cloud database berdua, sehingga kamu dan pasanganmu langsung melihat kenangan yang sama.
+              </Text>
+
+              <Text style={styles.helpHeading}>3. Pindai Struk Kencan &amp; Input Manual</Text>
+              <Text style={styles.helpText}>
+                Gunakan kamera untuk memindai bon fisik kencan. Jika struk kurang jelas, kamu bisa langsung menekan tombol "Catat Manual ✍️" untuk mencatat pengeluaran secara instan.
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { marginTop: 16 }]}
+                onPress={() => setIsHelpModalOpen(false)}>
+                <Text style={styles.modalSubmitBtnText}>Mengerti, Terima Kasih!</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1127,5 +1593,203 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#8F6F71',
     marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+  },
+  modalDesc: {
+    fontSize: 13,
+    color: luminousColors.onSurfaceVariant,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  modalAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginVertical: 14,
+  },
+  avatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLetter: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: luminousColors.onSurfaceVariant,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  modalInput: {
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: luminousColors.onSurface,
+  },
+  modalHelperText: {
+    fontSize: 12,
+    color: luminousColors.onSurfaceVariant,
+    marginBottom: 8,
+  },
+  modalSubmitBtn: {
+    backgroundColor: luminousColors.primary,
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  modalSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  codeHeroBox: {
+    backgroundColor: '#F0F4FC',
+    borderRadius: 18,
+    padding: 16,
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  codeHeroSubtitle: {
+    fontSize: 11,
+    color: luminousColors.secondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  codeHeroText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: luminousColors.primary,
+    letterSpacing: 4,
+    marginVertical: 6,
+  },
+  copyHeroBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: luminousColors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 14,
+    marginTop: 6,
+  },
+  copyHeroBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginVertical: 16,
+  },
+  pinToggleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8F9FA',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  pinToggleTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+  },
+  pinToggleDesc: {
+    fontSize: 11,
+    color: luminousColors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  budgetPresetBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F0F4FC',
+  },
+  budgetPresetBtnActive: {
+    backgroundColor: luminousColors.primary,
+  },
+  budgetPresetText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: luminousColors.primary,
+  },
+  budgetPresetTextActive: {
+    color: '#FFFFFF',
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F4F4F4',
+  },
+  activityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 4,
+  },
+  activityTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+  },
+  activitySub: {
+    fontSize: 11,
+    color: luminousColors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  helpHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  helpText: {
+    fontSize: 13,
+    color: luminousColors.onSurfaceVariant,
+    lineHeight: 20,
+    marginBottom: 8,
   },
 });

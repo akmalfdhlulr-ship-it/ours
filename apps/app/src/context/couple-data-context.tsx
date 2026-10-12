@@ -135,16 +135,19 @@ export interface CoupleDataContextValue {
 
   // Wishlist
   wishlist: SharedWishlistItem[];
-  addWishlistItem: (item: Omit<SharedWishlistItem, 'id' | 'currentSaved' | 'isCompleted'>) => void;
+  addWishlistItem: (item: Omit<SharedWishlistItem, 'id' | 'currentSaved' | 'isCompleted'>) => Promise<void>;
   addWishlistSavings: (id: string, amount: number) => void;
+  refreshWishlist: () => Promise<void>;
 
   // Dates
   dates: SharedDatePlan[];
-  addDatePlan: (plan: Omit<SharedDatePlan, 'id'>) => void;
+  addDatePlan: (plan: Omit<SharedDatePlan, 'id'>) => Promise<void>;
+  refreshDates: () => Promise<void>;
 
   // Expenses & Wallet
   expenses: SharedExpense[];
-  addExpense: (expense: Omit<SharedExpense, 'id'>) => void;
+  addExpense: (expense: Omit<SharedExpense, 'id'>) => Promise<void>;
+  refreshExpenses: () => Promise<void>;
 
   // Letters / Time Capsule
   letters: SharedLetter[];
@@ -237,12 +240,15 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (Array.isArray(serverItems)) {
         const mapped: SharedMemory[] = serverItems.map((m) => {
           const firstMedia = m.media && m.media.length > 0 ? m.media[0] : null;
-          const imageUrl =
+          let imageUrl =
             firstMedia?.mediaAsset?.secureUrl ||
             (firstMedia?.mediaAsset?.storageKey?.startsWith('http')
               ? firstMedia.mediaAsset.storageKey
               : '') ||
             '';
+          if (imageUrl.startsWith('/api/v1') || imageUrl.startsWith('/media/stream')) {
+            imageUrl = `https://ours-production.up.railway.app${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+          }
 
           return {
             id: m.id,
@@ -266,11 +272,89 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [coupleSpace?.id, coupleSpace?.status, user?.id, partnerNames.user, partnerNames.partner]);
 
+  // Sync expenses from backend PostgreSQL database when space is active
+  const refreshExpenses = useCallback(async () => {
+    if (!coupleSpace?.id || coupleSpace.status !== 'ACTIVE') return;
+    try {
+      const serverItems = await api.expenses.list();
+      if (Array.isArray(serverItems)) {
+        const mapped: SharedExpense[] = serverItems.map((e) => ({
+          id: e.id,
+          merchantName: e.description,
+          amount: e.amount,
+          date: e.expenseDate || 'Hari Ini',
+          category: e.category || 'Kuliner & Dining',
+          splitMode: '50-50',
+          paidBy:
+            e.paidById === user?.id
+              ? (partnerNames.user || 'Saya')
+              : (partnerNames.partner || 'Pasangan'),
+          accuracy: 98,
+        }));
+        setExpenses(mapped);
+        await storage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(mapped));
+      }
+    } catch (err) {
+      console.warn('Error refreshing expenses from backend:', err);
+    }
+  }, [coupleSpace?.id, coupleSpace?.status, user?.id, partnerNames.user, partnerNames.partner]);
+
+  // Sync wishlist from backend PostgreSQL database when space is active
+  const refreshWishlist = useCallback(async () => {
+    if (!coupleSpace?.id || coupleSpace.status !== 'ACTIVE') return;
+    try {
+      const serverItems = await api.wishlist.list();
+      if (Array.isArray(serverItems)) {
+        const mapped: SharedWishlistItem[] = serverItems.map((w) => ({
+          id: w.id,
+          title: w.title,
+          category: (w.category as any) || 'Aktivitas',
+          targetAmount: w.budgetAmount || 500000,
+          currentSaved: 0,
+          priority: w.priority === 'HIGH' ? 'Tinggi' : w.priority === 'LOW' ? 'Santai' : 'Sedang',
+          isCompleted: w.status === 'COMPLETED',
+          location: w.description || 'Impian Berdua',
+        }));
+        setWishlist(mapped);
+        await storage.setItem(STORAGE_KEY_WISHLIST, JSON.stringify(mapped));
+      }
+    } catch (err) {
+      console.warn('Error refreshing wishlist from backend:', err);
+    }
+  }, [coupleSpace?.id, coupleSpace?.status]);
+
+  // Sync date plans from backend PostgreSQL database when space is active
+  const refreshDates = useCallback(async () => {
+    if (!coupleSpace?.id || coupleSpace.status !== 'ACTIVE') return;
+    try {
+      const serverItems = await api.dates.list();
+      if (Array.isArray(serverItems)) {
+        const mapped: SharedDatePlan[] = serverItems.map((d) => ({
+          id: d.id,
+          title: d.title,
+          date: d.plannedDate ? d.plannedDate.split('T')[0] : 'Segera',
+          time: '19:00',
+          venueName: d.stops?.[0]?.title || 'Tempat Spesial',
+          location: d.stops?.[0]?.notes || 'Jakarta',
+          estimatedBudget: d.budgetAmount || 250000,
+          status: d.status === 'COMPLETED' ? 'completed' : 'upcoming',
+        }));
+        setDates(mapped);
+        await storage.setItem(STORAGE_KEY_DATES, JSON.stringify(mapped));
+      }
+    } catch (err) {
+      console.warn('Error refreshing dates from backend:', err);
+    }
+  }, [coupleSpace?.id, coupleSpace?.status]);
+
   useEffect(() => {
     if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
       refreshMemories();
+      refreshExpenses();
+      refreshWishlist();
+      refreshDates();
     }
-  }, [coupleSpace?.id, coupleSpace?.status, refreshMemories]);
+  }, [coupleSpace?.id, coupleSpace?.status, refreshMemories, refreshExpenses, refreshWishlist, refreshDates]);
 
   // Genuine calculation for Days Together strictly from real couple space dates
   const calculateDaysTogether = useCallback((): number => {
@@ -408,15 +492,34 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const addWishlistItem = async (
     item: Omit<SharedWishlistItem, 'id' | 'currentSaved' | 'isCompleted'>
   ) => {
+    let wishId = `wish-${Date.now()}`;
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        const created = await api.wishlist.create({
+          title: item.title,
+          category: item.category,
+          budgetAmount: item.targetAmount,
+          priority: item.priority === 'Tinggi' ? 'HIGH' : item.priority === 'Santai' ? 'LOW' : 'MEDIUM',
+          description: item.location || 'Impian bersama',
+        });
+        wishId = created.id;
+      } catch (err) {
+        console.warn('Error creating wishlist on backend:', err);
+      }
+    }
+
     const newItem: SharedWishlistItem = {
       ...item,
-      id: `wish-${Date.now()}`,
+      id: wishId,
       currentSaved: 0,
       isCompleted: false,
     };
-    const updated = [newItem, ...wishlist];
+    const updated = [newItem, ...wishlist.filter((w) => w.id !== wishId)];
     setWishlist(updated);
     await storage.setItem(STORAGE_KEY_WISHLIST, JSON.stringify(updated));
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      refreshWishlist().catch(() => {});
+    }
   };
 
   const addWishlistSavings = async (id: string, amount: number) => {
@@ -437,24 +540,59 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Dates
   const addDatePlan = async (plan: Omit<SharedDatePlan, 'id'>) => {
+    let dateId = `date-${Date.now()}`;
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        const created = await api.dates.create({
+          title: plan.title,
+          plannedDate: plan.date.includes('-') ? plan.date : new Date().toISOString().split('T')[0],
+          budgetAmount: plan.estimatedBudget,
+        });
+        dateId = created.id;
+      } catch (err) {
+        console.warn('Error creating date plan on backend:', err);
+      }
+    }
+
     const newDate: SharedDatePlan = {
       ...plan,
-      id: `date-${Date.now()}`,
+      id: dateId,
     };
-    const updated = [newDate, ...dates];
+    const updated = [newDate, ...dates.filter((d) => d.id !== dateId)];
     setDates(updated);
     await storage.setItem(STORAGE_KEY_DATES, JSON.stringify(updated));
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      refreshDates().catch(() => {});
+    }
   };
 
   // Expenses & Wallet
   const addExpense = async (expense: Omit<SharedExpense, 'id'>) => {
+    let expenseId = `exp-${Date.now()}`;
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        const created = await api.expenses.create({
+          description: expense.merchantName,
+          amount: Math.round(expense.amount),
+          category: expense.category,
+          expenseDate: new Date().toISOString().split('T')[0],
+        });
+        expenseId = created.id;
+      } catch (createErr) {
+        console.warn('Error saving expense to backend database:', createErr);
+      }
+    }
+
     const newExp: SharedExpense = {
       ...expense,
-      id: `exp-${Date.now()}`,
+      id: expenseId,
     };
-    const updated = [newExp, ...expenses];
+    const updated = [newExp, ...expenses.filter((e) => e.id !== expenseId)];
     setExpenses(updated);
     await storage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(updated));
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      refreshExpenses().catch(() => {});
+    }
   };
 
   // Letters & Time Capsule
@@ -599,10 +737,13 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         wishlist,
         addWishlistItem,
         addWishlistSavings,
+        refreshWishlist,
         dates,
         addDatePlan,
+        refreshDates,
         expenses,
         addExpense,
+        refreshExpenses,
         letters,
         activeCapsule,
         addLetter,

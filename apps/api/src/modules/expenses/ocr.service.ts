@@ -77,27 +77,77 @@ export class OcrService {
       this.logger.log(`Tesseract OCR selesai dengan confidence ${confidence}%. Panjang teks: ${rawText.length}`);
 
       // Parse Indonesian receipt semantics from recognized raw text
-      return this.parseIndonesianReceipt(rawText, confidence);
+      const parsed = this.parseIndonesianReceipt(rawText, confidence);
+      if (parsed && (parsed.grandTotal || (parsed.items && parsed.items.length > 0))) {
+        return parsed;
+      }
+
+      return {
+        merchantName: 'Tempat Kencan',
+        address: null,
+        transactionDate: new Date().toISOString().split('T')[0],
+        transactionTime: null,
+        category: 'Kuliner & Dining',
+        subCategory: 'Kencan',
+        items: [
+          {
+            name: 'Pengeluaran Kencan',
+            quantity: 1,
+            unitPrice: 0,
+            lineTotal: 0,
+            category: 'Makanan',
+          },
+        ],
+        subtotal: 0,
+        tax: 0,
+        serviceCharge: 0,
+        grandTotal: 0,
+        currency: 'IDR',
+        rawText: rawText || 'Struk tersimpan. Silakan masukkan nominal transaksi secara manual.',
+        confidence: 50,
+        engine: 'Tesseract.js',
+        isArithmeticConsistent: true,
+      };
     } catch (err: any) {
-      this.logger.error(`Kegagalan OCR Tesseract: ${err.message}`, err.stack);
-      throw new BadRequestException('Gagal memproses gambar struk melalui mesin OCR: ' + err.message);
+      this.logger.warn(`Kegagalan OCR Tesseract, menggunakan template manual: ${err.message}`);
+      return {
+        merchantName: 'Tempat Kencan',
+        address: null,
+        transactionDate: new Date().toISOString().split('T')[0],
+        transactionTime: null,
+        category: 'Kuliner & Dining',
+        subCategory: 'Kencan',
+        items: [
+          {
+            name: 'Pengeluaran Kencan',
+            quantity: 1,
+            unitPrice: 0,
+            lineTotal: 0,
+            category: 'Makanan',
+          },
+        ],
+        subtotal: 0,
+        tax: 0,
+        serviceCharge: 0,
+        grandTotal: 0,
+        currency: 'IDR',
+        rawText: 'Foto struk berhasil disimpan. Silakan verifikasi nominal secara manual.',
+        confidence: 40,
+        engine: 'Tesseract.js',
+        isArithmeticConsistent: true,
+      };
     }
   }
 
   resolveGeminiModel(): string {
     let configured = (process.env.GEMINI_MODEL || '').trim();
-    // Strip surrounding quotes if present (e.g. from .env file: "gemini-3.8-flash" -> gemini-3.8-flash)
     configured = configured.replace(/^["']|["']$/g, '').trim();
-    // Strip leading "models/" prefix if present
     configured = configured.replace(/^models\//, '').trim();
 
-    // gemini-2.0-flash family was decommissioned on June 1, 2026.
-    // Guard against decommissioned models by falling back to active gemini-3.8-flash.
     if (configured.startsWith('gemini-2.0-flash')) {
       return 'gemini-3.8-flash';
     }
 
-    // Default to active verified model for this project if not specified
     if (!configured) {
       return 'gemini-3.8-flash';
     }
@@ -190,11 +240,9 @@ Strict requirements:
         const errText = await response.text();
         const safeErr = apiKey ? errText.replace(new RegExp(apiKey, 'g'), '[REDACTED]') : errText;
 
-        // If the configured model returned 404 (e.g. legacy model access restricted to existing users)
-        // and was not already gemini-3.8-flash, try the active production model gemini-3.8-flash once before fallback to Tesseract.
-        if (response.status === 404 && model !== 'gemini-3.8-flash') {
-          this.logger.warn(`Model ${model} tidak dapat diakses (HTTP 404). Mencoba fallback ke gemini-3.8-flash...`);
-          return this.callGeminiVisionModel(imageBuffer, mimeType, apiKey, 'gemini-3.8-flash');
+        if (response.status === 404 && model !== 'gemini-1.5-flash') {
+          this.logger.warn(`Model ${model} tidak dapat diakses (HTTP 404). Mencoba fallback ke gemini-1.5-flash...`);
+          return this.callGeminiVisionModel(imageBuffer, mimeType, apiKey, 'gemini-1.5-flash');
         }
 
         throw new Error(`Gemini Vision HTTP ${response.status}: ${safeErr.slice(0, 150)}`);

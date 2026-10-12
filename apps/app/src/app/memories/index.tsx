@@ -62,6 +62,24 @@ export default function SharedMemoriesScreen() {
     }
   };
 
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+
+  const uriToDataUrl = async (uri: string): Promise<string> => {
+    if (!uri || uri.startsWith('data:')) return uri;
+    try {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string) || uri);
+        reader.onerror = () => resolve(uri);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return uri;
+    }
+  };
+
   // Launch Image Picker from gallery
   const handlePickImage = async () => {
     try {
@@ -81,8 +99,9 @@ export default function SharedMemoriesScreen() {
         const asset = result.assets[0];
         if (asset.base64) {
           setNewImageUri(`data:image/jpeg;base64,${asset.base64}`);
-        } else {
-          setNewImageUri(asset.uri);
+        } else if (asset.uri) {
+          const converted = await uriToDataUrl(asset.uri);
+          setNewImageUri(converted);
         }
       }
     } catch (err: any) {
@@ -109,8 +128,9 @@ export default function SharedMemoriesScreen() {
         const asset = result.assets[0];
         if (asset.base64) {
           setNewImageUri(`data:image/jpeg;base64,${asset.base64}`);
-        } else {
-          setNewImageUri(asset.uri);
+        } else if (asset.uri) {
+          const converted = await uriToDataUrl(asset.uri);
+          setNewImageUri(converted);
         }
       }
     } catch (err: any) {
@@ -274,11 +294,24 @@ export default function SharedMemoriesScreen() {
               <View style={styles.heroPolaroidCard}>
                 <View style={styles.heroPolaroidInner}>
                   <View style={styles.heroImageWrapper}>
-                    <Image
-                      source={{ uri: highlightMemory.imageUrl }}
-                      style={styles.heroImage}
-                      resizeMode="cover"
-                    />
+                    {highlightMemory.imageUrl && !failedImages[highlightMemory.id] ? (
+                      <Image
+                        source={{ uri: highlightMemory.imageUrl }}
+                        style={styles.heroImage}
+                        resizeMode="cover"
+                        onError={() => setFailedImages((prev) => ({ ...prev, [highlightMemory.id]: true }))}
+                      />
+                    ) : (
+                      <View style={[styles.heroImage, { backgroundColor: '#EEF2FC', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="camera" size={44} color={luminousColors.primary} />
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: luminousColors.primary, marginTop: 8 }}>
+                          {highlightMemory.title}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: luminousColors.onSurfaceVariant, marginTop: 2 }}>
+                          {highlightMemory.locationName}
+                        </Text>
+                      </View>
+                    )}
                     <View style={styles.heroDateBadge}>
                       <Ionicons name="sparkles" size={12} color="#FFFFFF" />
                       <Text style={styles.heroDateBadgeText}>{highlightMemory.date}</Text>
@@ -344,11 +377,21 @@ export default function SharedMemoriesScreen() {
                     onPress={() => setSelectedMemory(item)}
                     activeOpacity={0.88}>
                     <View style={styles.gridImageWrapper}>
-                      <Image
-                        source={{ uri: item.imageUrl }}
-                        style={styles.gridImage}
-                        resizeMode="cover"
-                      />
+                      {item.imageUrl && !failedImages[item.id] ? (
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={styles.gridImage}
+                          resizeMode="cover"
+                          onError={() => setFailedImages((prev) => ({ ...prev, [item.id]: true }))}
+                        />
+                      ) : (
+                        <View style={[styles.gridImage, { backgroundColor: '#EEF2FC', alignItems: 'center', justifyContent: 'center' }]}>
+                          <Ionicons name="camera" size={28} color={luminousColors.primary} />
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: luminousColors.primary, marginTop: 4 }} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.gridAuthorTag}>
                         <Text style={styles.gridAuthorText}>{item.author}</Text>
                       </View>
