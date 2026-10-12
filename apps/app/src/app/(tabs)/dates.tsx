@@ -1,1926 +1,1141 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ActivityIndicator,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   Image,
   Modal,
+  TextInput,
   Platform,
   RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
 } from 'react-native';
-import { colors } from '@ours/design-tokens';
-import { api } from '@/services/api';
-import {
-  CalendarEventItem,
-  DatePlanDetailResponse,
-  AiDatePlanProposalDto,
-  AiDateRecommendationDto,
-} from '@ours/contracts';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { formatRupiah, formatTanggal, parseRupiahInput } from '@/utils/format';
-import { OptionWheel, OptionWheelItem } from '@/components/free-components/OptionWheel';
+import { luminousColors } from '@ours/design-tokens';
+import Svg, { Circle } from 'react-native-svg';
+import { api } from '@/services/api';
+import { useCoupleData } from '@/context/couple-data-context';
+import { CalendarEventItem, DatePlanDetailResponse } from '@ours/contracts';
 
-const DATE_VIBE_OPTIONS: OptionWheelItem[] = [
-  { id: 'dinner', label: 'Makan Malam Romantis', icon: 'restaurant-outline', color: '#F43F5E' },
-  { id: 'cafe', label: 'Kafe & Obrolan Santai', icon: 'cafe-outline', color: '#EA580C' },
-  { id: 'art', label: 'Pameran & Seni', icon: 'color-palette-outline', color: '#7C3AED' },
-  { id: 'nature', label: 'Taman & Piknik', icon: 'leaf-outline', color: '#10B981' },
-  { id: 'movie', label: 'Bioskop & Hiburan', icon: 'film-outline', color: '#2563EB' },
-  { id: 'staycation', label: 'Santai di Rumah', icon: 'home-outline', color: '#EC4899' },
-];
+interface AgendaItem {
+  id: string;
+  day: number;
+  monthText: string;
+  categoryTag: string;
+  categoryColor: string;
+  title: string;
+  image: string;
+  badgeText: string;
+  badgeIcon: keyof typeof Ionicons.glyphMap;
+  chips: { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }[];
+  isMilestone?: boolean;
+  lockedNote?: { title: string; hint: string };
+}
 
-const DAYS_OF_WEEK = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+export default function CalendarScreen() {
+  const router = useRouter();
+  const { dates, addDatePlan, partnerNames } = useCoupleData();
 
-export default function DatesAndCalendarScreen() {
-  const [activeTab, setActiveTab] = useState<'calendar' | 'planner'>('calendar');
-  const [plans, setPlans] = useState<DatePlanDetailResponse[]>([]);
-  const [events, setEvents] = useState<CalendarEventItem[]>([]);
-  const [recommendations, setRecommendations] = useState<AiDateRecommendationDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  // Month navigation
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [monthOffset, setMonthOffset] = useState<number>(0);
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [newTitle, setNewTitle] = useState<string>('');
+  const [newDate, setNewDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [newCategory, setNewCategory] = useState<string>('Makan Malam Romantis');
 
-  // Date Plan detail state
-  const [selectedPlan, setSelectedPlan] = useState<DatePlanDetailResponse | null>(null);
-
-  // Modals
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedVibe, setSelectedVibe] = useState('dinner');
-  const [newTitle, setNewTitle] = useState('');
-  const [newDate, setNewDate] = useState('');
-  const [newBudget, setNewBudget] = useState('');
-  const [creating, setCreating] = useState(false);
-
-  // New Stop Modal
-  const [showAddStopModal, setShowAddStopModal] = useState(false);
-  const [stopTitle, setStopTitle] = useState('');
-  const [stopDuration, setStopDuration] = useState('60');
-
-  // AI Assistant Modal
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [generatingAi, setGeneratingAi] = useState(false);
-  const [aiProposal, setAiProposal] = useState<AiDatePlanProposalDto | null>(null);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [plansRes, eventsRes, recsRes] = await Promise.all([
-        api.dates.list().catch(() => []),
-        api.calendar.list().catch(() => []),
-        api.ai.recommendations().catch(() => []),
-      ]);
-      setPlans(plansRes);
-      setEvents(eventsRes);
-      setRecommendations(recsRes);
-
-      if (plansRes.length > 0) {
-        setSelectedPlan((prev) => (prev ? plansRes.find((p) => p.id === prev.id) || plansRes[0] : plansRes[0]));
+  // Convert context dates to agenda items (strictly from genuine user dates)
+  const currentAgenda: AgendaItem[] = React.useMemo(() => {
+    return dates.map((d, idx) => {
+      let day = 1;
+      let monthText = 'Bln';
+      try {
+        if (d.date) {
+          const parsed = new Date(d.date);
+          if (!isNaN(parsed.getTime())) {
+            day = parsed.getDate();
+            monthText = parsed.toLocaleString('id-ID', { month: 'short' });
+          }
+        }
+      } catch {
+        day = idx + 1;
       }
-    } catch (err: any) {
-      setStatusMessage(err?.message || 'Gagal memuat jadwal kencan');
+
+      return {
+        id: d.id,
+        day,
+        monthText,
+        categoryTag: d.venueName || 'Kencan Romantis',
+        categoryColor: luminousColors.primary,
+        title: d.title,
+        image:
+          'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80',
+        badgeText: `${d.time || '19.00 WIB'} • Terkonfirmasi`,
+        badgeIcon: 'calendar-outline',
+        chips: [
+          { label: d.time || '19.00 WIB', icon: 'time-outline', color: luminousColors.primary },
+          { label: d.location || 'Jakarta', icon: 'location-outline', color: luminousColors.secondary },
+        ],
+      };
+    });
+  }, [dates]);
+
+  const [agenda, setAgenda] = useState<AgendaItem[]>(currentAgenda);
+
+  useEffect(() => {
+    setAgenda(currentAgenda);
+  }, [currentAgenda]);
+
+  const fetchRemoteData = useCallback(async () => {
+    try {
+      const [eventsRes, plansRes] = await Promise.all([
+        api.calendar.list().catch(() => []),
+        api.dates.list().catch(() => []),
+      ]);
+      if (eventsRes && eventsRes.length > 0) {
+        // Remote data
+      }
+    } catch {
+      // Graceful fallback
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchRemoteData();
+  }, [fetchRemoteData]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    fetchRemoteData();
   };
 
-  const handleCreatePlan = async () => {
-    if (!newTitle.trim()) {
-      setStatusMessage('Judul kencan tidak boleh kosong');
-      return;
-    }
-    setCreating(true);
-    try {
-      const budgetNum = newBudget ? parseRupiahInput(newBudget) : undefined;
-      const created = await api.dates.create({
-        title: newTitle.trim(),
-        plannedDate: newDate.trim() || undefined,
-        budgetAmount: budgetNum,
-      });
-      setNewTitle('');
-      setNewDate('');
-      setNewBudget('');
-      setShowCreateModal(false);
-      setStatusMessage('Rencana kencan berhasil dibuat!');
-      setSelectedPlan(created);
-      setActiveTab('planner');
-      fetchData();
-    } catch (err: any) {
-      setStatusMessage(err?.message || 'Gagal membuat rencana kencan');
-    } finally {
-      setCreating(false);
-    }
-  };
+  const handleCreateEvent = async () => {
+    if (!newTitle.trim()) return;
 
-  const handleAddStopToPlan = async () => {
-    if (!selectedPlan || !stopTitle.trim()) return;
-    try {
-      const updated = await api.dates.addStop(selectedPlan.id, {
-        title: stopTitle.trim(),
-        sortOrder: (selectedPlan.stops?.length || 0) + 1,
-        estimatedDurationMin: parseInt(stopDuration, 10) || 60,
-      });
-      setSelectedPlan(updated);
-      setStopTitle('');
-      setShowAddStopModal(false);
-      setStatusMessage('Titik singgah berhasil ditambahkan!');
-      fetchData();
-    } catch (err: any) {
-      setStatusMessage(err?.message || 'Gagal menambahkan titik kencan');
-    }
-  };
-
-  const handleGenerateAi = async () => {
-    if (!aiPrompt.trim()) return;
-    setGeneratingAi(true);
-    try {
-      const proposal = await api.ai.planDate({ prompt: aiPrompt.trim() });
-      setAiProposal(proposal);
-    } catch (err: any) {
-      setStatusMessage(err?.message || 'Perancangan AI gagal');
-    } finally {
-      setGeneratingAi(false);
-    }
-  };
-
-  const handleAdoptAiProposal = async () => {
-    if (!aiProposal) return;
-    try {
-      const created = await api.dates.create({
-        title: aiProposal.title,
-        plannedDate: aiProposal.suggestedDate,
-        budgetAmount: aiProposal.estimatedBudgetMinorUnits,
-      });
-
-      for (let i = 0; i < (aiProposal.stops?.length || 0); i++) {
-        const stop = aiProposal.stops[i];
-        await api.dates.addStop(created.id, {
-          title: `${stop.title} - ${stop.placeName}`,
-          notes: stop.notes,
-          sortOrder: i + 1,
-          estimatedDurationMin: stop.estimatedDurationMin || 60,
-        });
-      }
-
-      setShowAiModal(false);
-      setAiProposal(null);
-      setAiPrompt('');
-      setSelectedPlan(created);
-      setStatusMessage(`Rencana "${aiProposal.title}" berhasil diadopsi!`);
-      setActiveTab('planner');
-      fetchData();
-    } catch (err: any) {
-      setStatusMessage(err?.message || 'Gagal mengadopsi rencana AI');
-    }
-  };
-
-  // Calendar Calculations
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthName = currentDate.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const calendarDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  const prevMonth = () => {
-    setCurrentDate(new Date(year, month - 1, 1));
-  };
-
-  const nextMonth = () => {
-    setCurrentDate(new Date(year, month + 1, 1));
-  };
-
-  // Filter plans/events for selected day
-  const plansOnSelectedDay = plans.filter((p) => {
-    if (!p.plannedDate) return false;
-    const d = new Date(p.plannedDate);
-    return d.getFullYear() === year && d.getMonth() === month && d.getDate() === selectedDay;
-  });
-
-  const eventsOnSelectedDay = events.filter((e) => {
-    const d = new Date(e.startAt);
-    return d.getFullYear() === year && d.getMonth() === month && d.getDate() === selectedDay;
-  });
-
-  const getDaysWithAgenda = (): Set<number> => {
-    const set = new Set<number>();
-    plans.forEach((p) => {
-      if (p.plannedDate) {
-        const d = new Date(p.plannedDate);
-        if (d.getFullYear() === year && d.getMonth() === month) {
-          set.add(d.getDate());
-        }
-      }
+    // Save to shared CoupleDataContext
+    addDatePlan({
+      title: newTitle.trim(),
+      date: newDate,
+      time: '19.00 WIB',
+      venueName: newCategory,
+      location: 'Jakarta',
+      estimatedBudget: 350000,
+      status: 'upcoming',
+      notes: 'Kencan indah bersama pasangan tercinta 💕',
     });
-    events.forEach((e) => {
-      const d = new Date(e.startAt);
-      if (d.getFullYear() === year && d.getMonth() === month) {
-        set.add(d.getDate());
-      }
-    });
-    return set;
-  };
 
-  const daysWithAgenda = getDaysWithAgenda();
+    const newItem: AgendaItem = {
+      id: `event-${Date.now()}`,
+      day: 22,
+      monthText: 'Apr',
+      categoryTag: newCategory,
+      categoryColor: luminousColors.primary,
+      title: newTitle.trim(),
+      image: '',
+      badgeText: 'Agenda Baru Dibuat',
+      badgeIcon: 'calendar',
+      chips: [
+        { label: '19.00 WIB', icon: 'time-outline', color: luminousColors.primary },
+        { label: 'Jakarta', icon: 'location-outline', color: luminousColors.secondary },
+      ],
+    };
+    setAgenda((prev) => [newItem, ...prev]);
+    setShowCreateModal(false);
+    setNewTitle('');
+  };
 
   return (
-    <View style={styles.container}>
-      {/* 1. Header with Mode Toggle & Profile Avatar */}
+    <View style={styles.screenRoot}>
+      {/* ---------------- Header ---------------- */}
       <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={styles.headerHeartCircle}>
-              <Ionicons name="heart" size={20} color="#F43F5E" />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>Kalender</Text>
-              <Text style={styles.headerSubtitle}>Momen istimewa berdua</Text>
-            </View>
+        <View style={styles.headerLeft}>
+          <View style={styles.headerHeartCircle}>
+            <Ionicons name="heart" size={20} color="#FFFFFF" />
           </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity
-              style={styles.headerBellBtn}
-              onPress={() => setStatusMessage('Pengingat jadwal kencan aktif')}
-              activeOpacity={0.75}>
-              <Ionicons name="notifications-outline" size={18} color="#4B5563" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.aiButton}
-              onPress={() => setShowAiModal(true)}
-              activeOpacity={0.85}>
-              <Ionicons name="sparkles" size={14} color={colors.primaryBlue} />
-              <Text style={styles.aiButtonText}>AI</Text>
-            </TouchableOpacity>
-
-            <View style={styles.headerDsAvatar}>
-              <Text style={styles.headerDsAvatarText}>D • S</Text>
-            </View>
-          </View>
+          <Text style={styles.headerTitle}>Kalender Pasangan</Text>
         </View>
 
-        <View style={styles.segmentedBar}>
+        <View style={styles.headerRight}>
           <TouchableOpacity
-            style={[styles.segmentItem, activeTab === 'calendar' && styles.segmentItemActive]}
-            onPress={() => setActiveTab('calendar')}
-            activeOpacity={0.85}>
-            <Ionicons
-              name="calendar"
-              size={15}
-              color={activeTab === 'calendar' ? '#FFFFFF' : '#4B5563'}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.segmentText, activeTab === 'calendar' && styles.segmentTextActive]}>
-              Kalender Kita
-            </Text>
+            style={styles.headerActionBtn}
+            activeOpacity={0.75}
+            accessibilityLabel="Notifikasi Pasangan">
+            <Ionicons name="notifications-outline" size={21} color={luminousColors.onSurfaceVariant} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.segmentItem, activeTab === 'planner' && styles.segmentItemActive]}
-            onPress={() => setActiveTab('planner')}
-            activeOpacity={0.85}>
-            <Ionicons
-              name="map"
-              size={15}
-              color={activeTab === 'planner' ? '#FFFFFF' : '#4B5563'}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.segmentText, activeTab === 'planner' && styles.segmentTextActive]}>
-              Rencana Kencan
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerProfileBtn}>
+            <Ionicons name="person" size={16} color={luminousColors.onPrimary} />
+          </View>
         </View>
       </View>
 
-      {/* Toast */}
-      {statusMessage && (
-        <View style={styles.statusToast}>
-          <Text style={styles.statusToastText}>{statusMessage}</Text>
-          <TouchableOpacity onPress={() => setStatusMessage(null)}>
-            <Ionicons name="close" size={16} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {loading && !refreshing ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primaryBlue} />
-          <Text style={styles.loadingText}>Memuat jadwal kencan...</Text>
-        </View>
-      ) : activeTab === 'calendar' ? (
-        /* ================= CALENDAR VIEW (Matching Image 3: Layar 7) ================= */
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
-          }>
-          {/* Calendar Month Box Card */}
-          <View style={styles.calendarCardWrapper}>
-            {/* Month Header Navigation */}
-            <View style={styles.calendarMonthHeader}>
-              <TouchableOpacity style={styles.monthNavButton} onPress={prevMonth} activeOpacity={0.75}>
-                <Ionicons name="chevron-back" size={18} color="#4B5563" />
-              </TouchableOpacity>
-              <Text style={styles.calendarMonthTitle}>
-                {monthName} {year}
-              </Text>
-              <TouchableOpacity style={styles.monthNavButton} onPress={nextMonth} activeOpacity={0.75}>
-                <Ionicons name="chevron-forward" size={18} color="#4B5563" />
-              </TouchableOpacity>
+      {/* ---------------- Main Scroll View ---------------- */}
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={luminousColors.primary}
+          />
+        }>
+        {/* Month Selector Row */}
+        <View style={styles.monthHeaderRow}>
+          <View style={styles.monthTitleGroup}>
+            <Text style={styles.monthNameText}>April 2025</Text>
+            <View style={styles.specialMonthPill}>
+              <Ionicons name="sparkles" size={12} color={luminousColors.primary} />
+              <Text style={styles.specialMonthText}>Bulan Spesial</Text>
             </View>
+          </View>
 
-            {/* Days of Week */}
-            <View style={styles.weekDaysRow}>
-              {DAYS_OF_WEEK.map((d, idx) => (
-                <Text
+          <View style={styles.monthNavBtns}>
+            <TouchableOpacity
+              style={styles.navArrowBtn}
+              onPress={() => setMonthOffset((prev) => prev - 1)}
+              activeOpacity={0.75}
+              accessibilityLabel="Bulan Sebelumnya">
+              <Ionicons name="chevron-back" size={18} color={luminousColors.onSurfaceVariant} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.navArrowBtn}
+              onPress={() => setMonthOffset((prev) => prev + 1)}
+              activeOpacity={0.75}
+              accessibilityLabel="Bulan Selanjutnya">
+              <Ionicons name="chevron-forward" size={18} color={luminousColors.onSurfaceVariant} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Metric Pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.metricsRow}>
+          <View style={styles.metricPill}>
+            <Ionicons name="heart" size={15} color={luminousColors.primary} />
+            <Text style={styles.metricPillText}>
+              {agenda.length > 0 ? `${agenda.length} Agenda Kencan Berdua` : 'Kalender Kencan Bersih 🌱'}
+            </Text>
+          </View>
+          <View style={[styles.metricPill, { borderColor: 'rgba(0, 102, 138, 0.15)' }]}>
+            <Ionicons name="hourglass-outline" size={15} color={luminousColors.secondary} />
+            <Text style={[styles.metricPillText, { color: luminousColors.secondary }]}>
+              {agenda.length > 0 ? `Menuju ${agenda[0].title}` : 'Siap Mulai Kencan #1 Bersama'}
+            </Text>
+          </View>
+        </ScrollView>
+
+        {/* Frosted Calendar Grid Card */}
+        <View style={styles.calendarCard}>
+          {/* Weekday headers */}
+          <View style={styles.weekdayRow}>
+            {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((w) => (
+              <Text key={w} style={styles.weekdayText}>
+                {w}
+              </Text>
+            ))}
+            <Text style={[styles.weekdayText, { color: luminousColors.primary, fontWeight: '700' }]}>
+              Min
+            </Text>
+          </View>
+
+          {/* Days Matrix (April 2025: April 1 starts Tuesday) */}
+          <View style={styles.daysMatrix}>
+            {/* 1 Blank slot on Monday */}
+            <View style={styles.daySlot} />
+
+            {/* Days 1 to 30 systematically rendered */}
+            {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => {
+              const isSelected = selectedDay === d;
+              const isToday = d === new Date().getDate();
+              const hasEvent = agenda.some((item) => item.day === d);
+
+              return (
+                <TouchableOpacity
                   key={d}
                   style={[
-                    styles.weekDayLabel,
-                    (idx === 5 || idx === 6) && styles.weekDayLabelWeekend,
-                  ]}>
-                  {d}
-                </Text>
-              ))}
-            </View>
-
-            {/* Day Grid */}
-            <View style={styles.daysGrid}>
-              {calendarDays.map((day) => {
-                const isSelected = selectedDay === day;
-                const isMilestone = day === 30;
-                const isEventDay = day === 20 || day === 24 || day === 26 || daysWithAgenda.has(day);
-
-                return (
-                  <TouchableOpacity
-                    key={day}
-                    style={[
-                      styles.dayCell,
-                      isMilestone
-                        ? styles.dayCellMilestone
-                        : isEventDay
-                        ? styles.dayCellEvent
-                        : isSelected
-                        ? styles.dayCellSelected
-                        : null,
-                    ]}
-                    onPress={() => setSelectedDay(day)}
-                    activeOpacity={0.8}>
-                    <Text
-                      style={[
-                        styles.dayNumberText,
-                        (isMilestone || isEventDay)
-                          ? styles.dayNumberTextWhite
-                          : isSelected
-                          ? styles.dayNumberTextSelected
-                          : null,
-                      ]}>
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Bottom Filter Pills inside Calendar Card */}
-            <View style={styles.calendarFilterPillsRow}>
-              <View style={styles.calendarPillEventCount}>
-                <View style={styles.calendarPillDot} />
-                <Text style={styles.calendarPillEventText}>
-                  {3 + plans.length} Agenda Berdua
-                </Text>
-              </View>
-
-              <View style={styles.calendarPillCategory}>
-                <Ionicons name="options-outline" size={13} color="#4B5563" />
-                <Text style={styles.calendarPillCategoryText}>Kategori: Semua</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.calendarPillBell}
-                onPress={() => setStatusMessage('Pengingat agenda aktif')}
-                activeOpacity={0.7}>
-                <Ionicons name="notifications-outline" size={14} color="#64748B" />
-              </TouchableOpacity>
-            </View>
+                    styles.daySlot,
+                    isToday && styles.todaySlot,
+                    isSelected && (hasEvent ? styles.specialSlotSelected : styles.daySlotSelected),
+                    hasEvent && !isSelected && styles.heartDateSlot,
+                  ]}
+                  onPress={() => setSelectedDay(d)}
+                  activeOpacity={0.75}>
+                  <Text
+                    style={
+                      isToday
+                        ? styles.todayNumText
+                        : hasEvent
+                          ? styles.heartDateNum
+                          : styles.dayNumText
+                    }>
+                    {d}
+                  </Text>
+                  {isToday && <View style={styles.todayIndicatorDot} />}
+                  {hasEvent && !isToday && (
+                    <Ionicons name="heart" size={10} color={luminousColors.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
+        </View>
 
-          {/* Section: Agenda Terdekat */}
-          <View style={styles.agendaSection}>
-            <View style={styles.agendaHeaderRow}>
-              <Text style={styles.agendaSectionTitle}>Agenda Terdekat</Text>
-              <Text style={styles.agendaSectionMonthLabel}>{monthName} {year}</Text>
+        {/* Countdown Glass Banner */}
+        {agenda.length > 0 ? (
+          <TouchableOpacity
+            style={styles.countdownBanner}
+            onPress={() => {
+              if (agenda[0]?.id) {
+                router.push({
+                  pathname: '/dates/planner',
+                  params: { dateId: agenda[0]?.id, title: agenda[0]?.title },
+                } as any);
+              }
+            }}
+            activeOpacity={0.85}>
+            <View style={styles.countdownTextCol}>
+              <View style={styles.countdownKickerRow}>
+                <View style={styles.pingDot} />
+                <Text style={styles.countdownKicker}>Hitung Mundur Kencan</Text>
+              </View>
+              <Text style={styles.countdownTitle}>{agenda[0]?.title}</Text>
+              <Text style={styles.countdownSubtitle}>
+                {agenda[0]?.badgeText || 'Jadwal kencan terkonfirmasi bersama'}
+              </Text>
             </View>
 
-            {/* Agenda 1: Makan malam di ORO (20 SAB) */}
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineDateCol}>
-                <Text style={styles.timelineDateNumRose}>20</Text>
-                <Text style={styles.timelineDateDayText}>SAB</Text>
-                <View style={styles.timelineLineRose} />
-              </View>
-
-              <View style={styles.timelineCard}>
-                <View style={styles.timelineCardTopRow}>
-                  <Image
-                    source={{
-                      uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=160&q=80',
-                    }}
-                    style={styles.timelineThumbImage}
-                  />
-                  <View style={{ flex: 1, justifyContent: 'center' }}>
-                    <View style={styles.timelinePillRose}>
-                      <Text style={styles.timelinePillTextRose}>Kencan • Sabtu, 20 Apr</Text>
-                    </View>
-                    <Text style={styles.timelineTitleText}>Makan malam di ORO</Text>
-                    <Text style={styles.timelineSubText}>🕒 19.00 – 21.00 • 📍 Jakarta Pusat</Text>
-                  </View>
-                </View>
-                <View style={styles.timelineFooterRow}>
-                  <Text style={styles.timelineFooterNote}>🍴 Reservasi Terkonfirmasi (Meja 4)</Text>
-                  <Text style={styles.timelineFooterActionRose}>Detail →</Text>
-                </View>
+            {/* Progress Ring Widget */}
+            <View style={styles.progressRingWrapper}>
+              <Svg width={54} height={54} viewBox="0 0 48 48">
+                <Circle
+                  cx="24"
+                  cy="24"
+                  r="20"
+                  stroke={luminousColors.surfaceContainerHigh}
+                  strokeWidth={4}
+                  fill="none"
+                />
+                <Circle
+                  cx="24"
+                  cy="24"
+                  r="20"
+                  stroke={luminousColors.primary}
+                  strokeWidth={4}
+                  strokeDasharray="125.6"
+                  strokeDashoffset="42.7"
+                  strokeLinecap="round"
+                  fill="none"
+                  transform="rotate(-90 24 24)"
+                />
+              </Svg>
+              <View style={styles.progressRingCenter}>
+                <Text style={styles.progressRingPercent}>66%</Text>
               </View>
             </View>
-
-            {/* Agenda 2: Nonton konser bareng (24 RAB) */}
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineDateCol}>
-                <Text style={styles.timelineDateNumDark}>24</Text>
-                <Text style={styles.timelineDateDayText}>RAB</Text>
-                <View style={styles.timelineLineGray} />
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.countdownBanner, { padding: 18, alignItems: 'center', justifyContent: 'space-between', flexDirection: 'row' }]}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={styles.countdownKickerRow}>
+                <View style={[styles.pingDot, { backgroundColor: '#4CAF50' }]} />
+                <Text style={styles.countdownKicker}>Ruang Pasangan Bersih</Text>
               </View>
-
-              <View style={styles.timelineCard}>
-                <View style={styles.timelineCardTopRow}>
-                  <Image
-                    source={{
-                      uri: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=160&q=80',
-                    }}
-                    style={styles.timelineThumbImage}
-                  />
-                  <View style={{ flex: 1, justifyContent: 'center' }}>
-                    <View style={styles.timelinePillBlue}>
-                      <Text style={styles.timelinePillTextBlue}>Hiburan • Rabu, 24 Apr</Text>
-                    </View>
-                    <Text style={styles.timelineTitleText}>Nonton konser bareng</Text>
-                    <Text style={styles.timelineSubText}>🕒 19.00 – 22.00 • 📍 GBK Senayan</Text>
-                  </View>
-                </View>
-                <View style={styles.timelineFooterRow}>
-                  <Text style={styles.timelineFooterNote}>🎟️ 2 e-Tiket CAT 2 (Siap)</Text>
-                  <Text style={styles.timelineFooterActionBlue}>Tiket →</Text>
-                </View>
-              </View>
+              <Text style={[styles.countdownTitle, { fontSize: 15 }]}>Rencanakan Kencan Pertama 🌱</Text>
+              <Text style={[styles.countdownSubtitle, { fontSize: 12 }]}>
+                Mulai isi kalender cinta kalian berdua dari hari pertama!
+              </Text>
             </View>
+            <TouchableOpacity
+              style={{ backgroundColor: luminousColors.primary, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18 }}
+              onPress={() => setShowCreateModal(true)}
+              activeOpacity={0.85}>
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>+ Buat Kencan</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-            {/* Agenda 3: Milestone Anniversary 1 Tahun (30 SEL) */}
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineDateCol}>
-                <Text style={styles.timelineDateNumRose}>30</Text>
-                <Text style={styles.timelineDateDayText}>SEL</Text>
-              </View>
+        {/* Agenda List Section ("Jadwal Momen Bersama") */}
+        <View style={styles.agendaHeaderRow}>
+          <Text style={styles.agendaSectionTitle}>Jadwal Momen Bersama</Text>
+          <Text style={styles.agendaCountLabel}>
+            {agenda.length > 0 ? `${agenda.length} Agenda Aktif` : '0 Agenda'}
+          </Text>
+        </View>
 
-              <View style={styles.timelineMilestoneCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.timelineMilestoneBadge}>
-                      <Text style={styles.timelineMilestoneBadgeText}>❤️ Milestone • Selasa, 30 Apr</Text>
-                    </View>
-                    <Text style={styles.timelineMilestoneTitle}>Anniversary 1 Tahun</Text>
-                    <Text style={styles.timelineMilestoneSub}>🎂 Sepanjang hari • Perayaan</Text>
-                  </View>
-                  <View style={styles.timelineMilestoneIconCircle}>
-                    <Text style={{ fontSize: 22 }}>🎁</Text>
-                  </View>
-                </View>
-                <View style={styles.timelineMilestoneFooterRow}>
-                  <Text style={styles.timelineMilestoneFooterNote}>💌 Tukar Surat Kasih & Kado</Text>
-                  <Text style={styles.timelineMilestoneFooterAction}>Hitung Mundur</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* User dynamic plans */}
-            {plans.map((p) => (
+        <View style={styles.agendaListCol}>
+          {agenda.length > 0 ? (
+            agenda.map((item) => (
               <TouchableOpacity
-                key={p.id}
-                style={[styles.agendaCard, { marginTop: 8 }]}
+                key={item.id}
+                style={[
+                  styles.agendaCard,
+                  item.isMilestone && styles.milestoneAgendaCard,
+                ]}
                 onPress={() => {
-                  setSelectedPlan(p);
-                  setActiveTab('planner');
+                  router.push('/dates/planner' as any);
                 }}
                 activeOpacity={0.88}>
-                <View style={styles.agendaDayBadge}>
-                  <Ionicons name="heart" size={16} color="#F43F5E" />
-                </View>
-                <View style={styles.agendaBodyCol}>
-                  <Text style={styles.agendaTitle}>{p.title}</Text>
-                  <View style={styles.agendaMetaRow}>
-                    <Ionicons name="time-outline" size={13} color="#6B7280" />
-                    <Text style={styles.agendaMetaText}>
-                      {p.plannedDate ? formatTanggal(p.plannedDate) : 'Hari ini'}
-                    </Text>
-                    {p.budgetAmount ? (
-                      <>
-                        <Text style={styles.agendaDotDivider}>•</Text>
-                        <Text style={styles.agendaMetaText}>{formatRupiah(p.budgetAmount)}</Text>
-                      </>
-                    ) : null}
+                <View style={styles.agendaCardHeader}>
+                  <View style={styles.agendaDateThumb}>
+                    <Text style={styles.agendaDayNumber}>{item.day}</Text>
+                    <Text style={styles.agendaMonthText}>{item.monthText}</Text>
                   </View>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            ))}
-          </View>
 
-          {/* Banner Countdown Footer */}
-          <View style={styles.countdownBanner}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-              <View style={styles.countdownIconCircle}>
-                <Text style={{ fontSize: 18 }}>⏳</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.countdownTitleText}>10 Hari Menuju Kencan Berikutnya</Text>
-                <Text style={styles.countdownSubText}>Makan malam di ORO Italian Restaurant</Text>
-              </View>
-            </View>
-            <Ionicons name="arrow-forward" size={18} color="#F43F5E" />
-          </View>
-        </ScrollView>
-      ) : (
-        /* ================= PLANNER VIEW ================= */
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />
-          }>
-          {selectedPlan ? (
-            <>
-              {/* Hero Plan Card */}
-              <View style={styles.plannerHeroCard}>
-                <Image
-                  source={{
-                    uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=700&q=80',
-                  }}
-                  style={styles.plannerHeroImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.plannerHeroOverlay} />
-                <View style={styles.plannerHeroContent}>
-                  <View style={styles.plannerBadge}>
-                    <Ionicons name="heart" size={12} color="#F43F5E" />
-                    <Text style={styles.plannerBadgeText}>Rencana Pilihan</Text>
-                  </View>
-                  <Text style={styles.plannerTitle}>{selectedPlan.title}</Text>
-                  <View style={styles.plannerHeroMetaRow}>
-                    <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
-                    <Text style={styles.plannerHeroMetaText}>
-                      {selectedPlan.plannedDate ? formatTanggal(selectedPlan.plannedDate) : 'Belum Dijadwalkan'}
+                  <View style={styles.agendaTitleCol}>
+                    <View
+                      style={[
+                        styles.agendaCategoryPill,
+                        {
+                          backgroundColor:
+                            item.categoryColor === luminousColors.primary
+                              ? luminousColors.primaryFixed
+                              : luminousColors.secondaryFixed,
+                        },
+                      ]}>
+                      <Text
+                        style={[
+                          styles.agendaCategoryText,
+                          {
+                            color:
+                              item.categoryColor === luminousColors.primary
+                                ? luminousColors.primary
+                                : luminousColors.secondary,
+                          },
+                        ]}>
+                        {item.categoryTag}
+                      </Text>
+                    </View>
+                    <Text style={styles.agendaMainTitle} numberOfLines={1}>
+                      {item.title}
                     </Text>
-                    <Text style={styles.plannerHeroMetaText}>•</Text>
-                    <Text style={styles.plannerHeroMetaText}>
-                      {selectedPlan.stops?.length || 0} Titik Kencan
-                    </Text>
-                    {selectedPlan.budgetAmount ? (
-                      <>
-                        <Text style={styles.plannerHeroMetaText}>•</Text>
-                        <Text style={styles.plannerHeroMetaText}>
-                          {formatRupiah(selectedPlan.budgetAmount)}
-                        </Text>
-                      </>
-                    ) : null}
                   </View>
-                </View>
-              </View>
 
-              {/* Timeline Stops Section */}
-              <View style={styles.timelineSection}>
-                <View style={styles.timelineHeaderRow}>
-                  <Text style={styles.sectionHeaderTitle}>Rute & Titik Kencan</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowAddStopModal(true)}
-                    style={styles.addStopSmallBtn}>
-                    <Ionicons name="add" size={16} color={colors.primaryBlue} />
-                    <Text style={styles.addStopSmallText}>Tambah Titik</Text>
+                  <TouchableOpacity style={styles.agendaMoreBtn} activeOpacity={0.7}>
+                    <Ionicons name="ellipsis-horizontal" size={18} color={luminousColors.onSurfaceVariant} />
                   </TouchableOpacity>
                 </View>
 
-                {selectedPlan.stops && selectedPlan.stops.length > 0 ? (
-                  <View style={styles.timelineContainer}>
-                    {selectedPlan.stops.map((stop, idx) => {
-                      const isLast = idx === selectedPlan.stops.length - 1;
-                      return (
-                        <View key={stop.id} style={styles.timelineItemRow}>
-                          <View style={styles.timelineTimeCol}>
-                            <Text style={styles.timelineTimeText}>#{stop.sortOrder || idx + 1}</Text>
-                          </View>
-                          <View style={styles.timelineNodeCol}>
-                            <View
-                              style={[
-                                styles.timelineNodeCircle,
-                                idx === 0 && { backgroundColor: '#F43F5E' },
-                              ]}
-                            />
-                            {!isLast && <View style={styles.timelineLine} />}
-                          </View>
-                          <View style={styles.timelineContentCard}>
-                            <View style={styles.timelineStopCol}>
-                              <Text style={styles.timelineStopTitle}>{stop.title}</Text>
-                              {stop.notes && <Text style={styles.timelineStopSub}>{stop.notes}</Text>}
-                              <Text style={styles.timelineStopDuration}>
-                                Estimasi {stop.estimatedDurationMin || 60} menit
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <View style={styles.emptyStopsCard}>
-                    <Ionicons name="map-outline" size={28} color="#9CA3AF" style={{ marginBottom: 6 }} />
-                    <Text style={styles.emptyStopsTitle}>Belum ada titik singgah</Text>
-                    <Text style={styles.emptyStopsSub}>
-                      Tambahkan restoran, kafe, atau taman untuk menyusun alur kencan berdua.
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.emptyStopsActionBtn}
-                      onPress={() => setShowAddStopModal(true)}>
-                      <Text style={styles.emptyStopsActionText}>+ Tambah Titik Pertama</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-
-              {/* Budget Estimation Card */}
-              {selectedPlan.budgetAmount ? (
-                <View style={styles.budgetEstimateCard}>
-                  <View style={styles.budgetIconCircle}>
-                    <Ionicons name="wallet-outline" size={20} color="#2563EB" />
-                  </View>
-                  <View style={styles.budgetCol}>
-                    <Text style={styles.budgetSub}>Anggaran Kencan</Text>
-                    <Text style={styles.budgetAmount}>
-                      {formatRupiah(selectedPlan.budgetAmount)}
-                    </Text>
-                    <Text style={styles.budgetTarget}>Estimasi total untuk berdua</Text>
+                {/* Event Image Banner with Overlay */}
+                <View style={styles.agendaImageWrapper}>
+                  <Image
+                    source={{ uri: item.image }}
+                    style={styles.agendaImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.agendaImageScrim}>
+                    <View style={styles.agendaBadgeRow}>
+                      <Ionicons name={item.badgeIcon} size={14} color="#FFFFFF" />
+                      <Text style={styles.agendaBadgeText}>{item.badgeText}</Text>
+                    </View>
                   </View>
                 </View>
-              ) : null}
-            </>
+
+                {/* Event Detail Chips */}
+                <View style={styles.agendaChipsRow}>
+                  {item.chips.map((chip, idx) => (
+                    <View key={idx} style={styles.agendaDetailChip}>
+                      <Ionicons name={chip.icon} size={14} color={chip.color} />
+                      <Text style={styles.agendaDetailChipText}>{chip.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Secret Surprise Mystery Lock Box */}
+                {item.lockedNote && (
+                  <View style={styles.lockedNoteBox}>
+                    <View style={styles.lockedNoteCircle}>
+                      <Ionicons name="lock-closed" size={17} color={luminousColors.primary} />
+                    </View>
+                    <View style={styles.lockedNoteTextCol}>
+                      <Text style={styles.lockedNoteTitle}>{item.lockedNote.title}</Text>
+                      <Text style={styles.lockedNoteHint}>{item.lockedNote.hint}</Text>
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))
           ) : (
-            <View style={styles.emptyPlannerContainer}>
-              <Ionicons name="heart-circle-outline" size={54} color="#F43F5E" style={{ marginBottom: 12 }} />
-              <Text style={styles.emptyPlannerTitle}>Belum Ada Rencana Kencan</Text>
-              <Text style={styles.emptyPlannerSub}>
-                Rancang momen berkesan bersama pasangan dengan menambahkan kencan baru atau buat rencana instan dengan Asisten AI.
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-                <TouchableOpacity
-                  style={styles.createPlanPrimaryBtn}
-                  onPress={() => setShowCreateModal(true)}>
-                  <Text style={styles.createPlanPrimaryBtnText}>+ Rancang Kencan</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.createPlanSecondaryBtn}
-                  onPress={() => setShowAiModal(true)}>
-                  <Ionicons name="sparkles" size={15} color={colors.primaryBlue} />
-                  <Text style={styles.createPlanSecondaryBtnText}>Tanya AI</Text>
-                </TouchableOpacity>
+            <View style={[styles.agendaCard, { padding: 24, alignItems: 'center', backgroundColor: '#FFFFFF' }]}>
+              <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: '#FFEBF0', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <Ionicons name="calendar-outline" size={26} color={luminousColors.primary} />
               </View>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: luminousColors.onSurface, marginBottom: 6, textAlign: 'center' }}>
+                Kalender Kencan Masih Bersih 🗓️
+              </Text>
+              <Text style={{ fontSize: 13, color: luminousColors.onSurfaceVariant, textAlign: 'center', marginBottom: 16, lineHeight: 19 }}>
+                Belum ada agenda kencan bersama {partnerNames.partner}. Buat rencana kencan pertamamu seperti makan malam, nonton bioskop, atau jalan santai berdua!
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: luminousColors.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 }}
+                onPress={() => setShowCreateModal(true)}
+                activeOpacity={0.85}>
+                <Ionicons name="add" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>+ Buat Agenda Kencan</Text>
+              </TouchableOpacity>
             </View>
           )}
-        </ScrollView>
-      )}
+        </View>
 
-      {/* Floating Action Button */}
+        {/* Space for bottom dock */}
+        <View style={{ height: 110 }} />
+      </ScrollView>
+
+      {/* ---------------- Floating Action Button (+) ---------------- */}
       <TouchableOpacity
-        style={styles.fabButton}
+        style={styles.fabBtn}
         onPress={() => setShowCreateModal(true)}
-        activeOpacity={0.88}>
-        <Ionicons name="add" size={26} color="#FFFFFF" />
+        activeOpacity={0.88}
+        accessibilityLabel="Tambah Kencan Baru">
+        <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Modal Rancang Kencan Baru */}
-      <Modal visible={showCreateModal} transparent animationType="slide">
+      {/* ---------------- Modal Buat Agenda Baru ---------------- */}
+      <Modal
+        visible={showCreateModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCreateModal(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Rancang Kencan Baru</Text>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Rencanakan Kencan Baru</Text>
+              <TouchableOpacity
+                onPress={() => setShowCreateModal(false)}
+                activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color={luminousColors.onSurfaceVariant} />
               </TouchableOpacity>
             </View>
 
-            {/* OptionWheel for Date Vibe Selection */}
-            <Text style={styles.inputSectionLabel}>Pilih Suasana Kencan</Text>
-            <OptionWheel
-              options={DATE_VIBE_OPTIONS}
-              selectedId={selectedVibe}
-              onSelect={(id) => {
-                setSelectedVibe(id);
-                const vibe = DATE_VIBE_OPTIONS.find((v) => v.id === id);
-                if (vibe && !newTitle.trim()) {
-                  setNewTitle(vibe.label);
-                }
-              }}
-            />
-
+            <Text style={styles.inputLabel}>Judul Agenda</Text>
             <TextInput
-              style={styles.inputField}
-              placeholder="Judul Kencan (contoh: Makan Malam di Menteng)"
-              placeholderTextColor="#9CA3AF"
+              style={styles.modalInput}
+              placeholder="Contoh: Sunset di Pantai Ancol"
+              placeholderTextColor="#8F6F71"
               value={newTitle}
               onChangeText={setNewTitle}
             />
 
-            <TextInput
-              style={styles.inputField}
-              placeholder="Tanggal (YYYY-MM-DD, contoh: 2026-10-25)"
-              placeholderTextColor="#9CA3AF"
-              value={newDate}
-              onChangeText={setNewDate}
-            />
-
-            <TextInput
-              style={styles.inputField}
-              placeholder="Estimasi Budget (contoh: 500.000)"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="numeric"
-              value={newBudget}
-              onChangeText={setNewBudget}
-            />
-
-            <TouchableOpacity
-              style={styles.modalSubmitButton}
-              onPress={handleCreatePlan}
-              disabled={creating}
-              activeOpacity={0.88}>
-              {creating ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.modalSubmitButtonText}>Simpan Rencana</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Tambah Titik Singgah */}
-      <Modal visible={showAddStopModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Tambah Titik Rute</Text>
-              <TouchableOpacity onPress={() => setShowAddStopModal(false)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.inputField}
-              placeholder="Nama Lokasi / Aktivitas (contoh: Kafe Senja)"
-              placeholderTextColor="#9CA3AF"
-              value={stopTitle}
-              onChangeText={setStopTitle}
-            />
-
-            <TextInput
-              style={styles.inputField}
-              placeholder="Estimasi Durasi (menit, contoh: 60)"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="numeric"
-              value={stopDuration}
-              onChangeText={setStopDuration}
-            />
-
-            <TouchableOpacity
-              style={styles.modalSubmitButton}
-              onPress={handleAddStopToPlan}
-              activeOpacity={0.88}>
-              <Text style={styles.modalSubmitButtonText}>Tambahkan ke Rute</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal AI Planner */}
-      <Modal visible={showAiModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { maxHeight: '85%' }]}>
-            <View style={styles.modalHeaderRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="sparkles" size={18} color={colors.primaryBlue} />
-                <Text style={styles.modalTitle}>Asisten AI Kencan</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowAiModal(false)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.inputField}
-              placeholder="Ingin kencan seperti apa? (contoh: kencan sore santai di Jakarta Pusat budget 500rb)"
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={3}
-              value={aiPrompt}
-              onChangeText={setAiPrompt}
-            />
-
-            <TouchableOpacity
-              style={styles.modalSubmitButton}
-              onPress={handleGenerateAi}
-              disabled={generatingAi}
-              activeOpacity={0.88}>
-              {generatingAi ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.modalSubmitButtonText}>Buat Rekomendasi Rute</Text>
-              )}
-            </TouchableOpacity>
-
-            {aiProposal && (
-              <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
-                <Text style={styles.aiResultTitle}>{aiProposal.title}</Text>
-                <Text style={styles.aiResultSub}>
-                  Estimasi Budget: {formatRupiah(aiProposal.estimatedBudgetMinorUnits)}
-                </Text>
-
-                {aiProposal.stops?.map((s, idx) => (
-                  <View key={idx} style={styles.aiStopRow}>
-                    <Text style={styles.aiStopIndex}>{idx + 1}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.aiStopName}>{s.placeName || s.title}</Text>
-                      {s.notes && <Text style={styles.aiStopNotes}>{s.notes}</Text>}
-                    </View>
-                  </View>
-                ))}
-
+            <Text style={styles.inputLabel}>Kategori Kencan</Text>
+            <View style={styles.categorySelectRow}>
+              {['Makan Malam Romantis', 'Jalan Santai', 'Bioskop'].map((cat) => (
                 <TouchableOpacity
-                  style={[styles.modalSubmitButton, { backgroundColor: '#10B981', marginTop: 12 }]}
-                  onPress={handleAdoptAiProposal}
-                  activeOpacity={0.88}>
-                  <Text style={styles.modalSubmitButtonText}>Adopsi Rencana Ini</Text>
+                  key={cat}
+                  style={[
+                    styles.catOption,
+                    newCategory === cat && styles.catOptionActive,
+                  ]}
+                  onPress={() => setNewCategory(cat)}
+                  activeOpacity={0.8}>
+                  <Text
+                    style={[
+                      styles.catOptionText,
+                      newCategory === cat && styles.catOptionTextActive,
+                    ]}>
+                    {cat}
+                  </Text>
                 </TouchableOpacity>
-              </ScrollView>
-            )}
+              ))}
+            </View>
+
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowCreateModal(false)}
+                activeOpacity={0.8}>
+                <Text style={styles.modalCancelText}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleCreateEvent}
+                activeOpacity={0.85}>
+                <Text style={styles.modalSubmitText}>Simpan ke Kalender</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
-
-      {/* Floating Action Button (FAB) */}
-      <TouchableOpacity
-        style={styles.calendarFabBtn}
-        onPress={() => {
-          setNewDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`);
-          setShowCreateModal(true);
-        }}
-        activeOpacity={0.85}>
-        <Ionicons name="add" size={28} color="#FFFFFF" />
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screenRoot: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: luminousColors.surface,
   },
   header: {
-    backgroundColor: '#FFFFFF',
+    height: 64,
+    paddingTop: Platform.OS === 'ios' ? 12 : 8,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 52 : 24,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  headerTopRow: {
+    backgroundColor: 'rgba(250, 248, 255, 0.95)',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(185, 5, 56, 0.05)',
+    zIndex: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerHeartCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: luminousColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: luminousColors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   headerTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1F2937',
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  aiButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
-  },
-  aiButtonText: {
-    fontSize: 12,
+    fontSize: 18,
     fontWeight: '700',
-    color: colors.primaryBlue,
+    color: luminousColors.onSurface,
+    letterSpacing: -0.3,
   },
-  segmentedBar: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 4,
-  },
-  segmentItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  segmentItemActive: {
-    backgroundColor: '#1F2937',
-  },
-  segmentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4B5563',
-  },
-  segmentTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 110,
-    maxWidth: 520,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 8,
-  },
-  statusToast: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 56 : 30,
-    alignSelf: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    zIndex: 999,
   },
-  statusToastText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  calendarMonthHeader: {
-    flexDirection: 'row',
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
   },
-  monthNavButton: {
+  headerProfileBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: luminousColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
-  calendarMonthTitle: {
-    fontSize: 17,
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  monthHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  monthTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  monthNameText: {
+    fontSize: 22,
     fontWeight: '700',
-    color: '#1F2937',
+    color: luminousColors.onSurface,
+    letterSpacing: -0.4,
   },
-  weekDaysRow: {
+  specialMonthPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: luminousColors.primaryFixed,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    gap: 4,
+  },
+  specialMonthText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: luminousColors.primary,
+  },
+  monthNavBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  navArrowBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  metricPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(185, 5, 56, 0.08)',
+  },
+  metricPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: luminousColors.onSurface,
+  },
+  calendarCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    borderRadius: 28,
+    padding: 16,
+    shadowColor: 'rgba(185, 5, 56, 0.08)',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  weekdayRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 8,
   },
-  weekDayLabel: {
+  weekdayText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(19, 27, 46, 0.45)',
     width: 38,
     textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9CA3AF',
   },
-  daysGrid: {
+  daysMatrix: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 20,
+    rowGap: 6,
   },
-  dayCell: {
-    width: '13%',
-    aspectRatio: 1,
+  daySlot: {
+    width: 38,
+    height: 40,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 4,
-    borderRadius: 12,
-    position: 'relative',
   },
-  dayCellSelected: {
-    backgroundColor: '#F43F5E',
+  daySlotSelected: {
+    backgroundColor: luminousColors.surfaceContainerHigh,
   },
-  dayCellHasAgenda: {
-    backgroundColor: '#FEE2E2',
-  },
-  dayNumberText: {
+  dayNumText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
+    color: luminousColors.onSurface,
+    fontWeight: '500',
   },
-  dayNumberTextSelected: {
-    color: '#FFFFFF',
+  todaySlot: {
+    backgroundColor: luminousColors.surfaceContainer,
+  },
+  todayNumText: {
+    fontSize: 13,
     fontWeight: '700',
+    color: luminousColors.primary,
   },
-  dayNumberTextAgenda: {
-    color: '#F43F5E',
-    fontWeight: '700',
-  },
-  agendaDot: {
-    position: 'absolute',
-    bottom: 4,
+  todayIndicatorDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#F43F5E',
-  },
-  agendaSection: {
-    gap: 10,
-  },
-  agendaHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  agendaSectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  addAgendaLink: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primaryBlue,
-  },
-  agendaCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  agendaDayBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  agendaBodyCol: {
-    flex: 1,
-  },
-  agendaTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 3,
-  },
-  agendaMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  agendaMetaText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  agendaDotDivider: {
-    fontSize: 10,
-    color: '#9CA3AF',
-    marginHorizontal: 2,
-  },
-  emptyAgendaCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-    marginTop: 4,
-  },
-  emptyAgendaTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  emptyAgendaSub: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 12,
-    maxWidth: 260,
-  },
-  emptyAgendaActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryBlue,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  emptyAgendaActionText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  plannerHeroCard: {
-    width: '100%',
-    height: 180,
-    borderRadius: 22,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: '#E5E7EB',
-    marginBottom: 20,
-  },
-  plannerHeroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  plannerHeroOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  plannerHeroContent: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
-  },
-  plannerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
-    gap: 4,
-    marginBottom: 6,
-  },
-  plannerBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#F43F5E',
-  },
-  plannerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 6,
-  },
-  plannerHeroMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  plannerHeroMetaText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  timelineSection: {
-    marginBottom: 20,
-  },
-  timelineHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  addStopSmallBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  addStopSmallText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primaryBlue,
-  },
-  timelineContainer: {
-    gap: 12,
-  },
-  timelineItemRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  timelineTimeCol: {
-    width: 36,
-    paddingTop: 8,
-  },
-  timelineTimeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  timelineNodeCol: {
-    width: 24,
-    alignItems: 'center',
-    paddingTop: 10,
-    alignSelf: 'stretch',
-  },
-  timelineNodeCircle: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primaryBlue,
-  },
-  timelineLine: {
-    flex: 1,
-    width: 2,
-    backgroundColor: '#E5E7EB',
-    marginTop: 4,
-  },
-  timelineContentCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginLeft: 6,
-  },
-  timelineStopCol: {
-    flex: 1,
-  },
-  timelineStopTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  timelineStopSub: {
-    fontSize: 12,
-    color: '#6B7280',
+    backgroundColor: luminousColors.primary,
     marginTop: 2,
   },
-  timelineStopDuration: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.primaryBlue,
-    marginTop: 4,
+  heartDateSlot: {
+    backgroundColor: luminousColors.primaryFixed,
   },
-  emptyStopsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-  },
-  emptyStopsTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  emptyStopsSub: {
+  heartDateNum: {
     fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 10,
+    fontWeight: '800',
+    color: luminousColors.onPrimaryFixed,
   },
-  emptyStopsActionBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#EFF6FF',
+  ticketDateSlot: {
+    backgroundColor: luminousColors.secondaryFixed,
   },
-  emptyStopsActionText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primaryBlue,
+  ticketDateNum: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: luminousColors.onSecondaryFixed,
   },
-  budgetEstimateCard: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 16,
+  annivDateSlot: {
+    backgroundColor: luminousColors.primary,
+    shadowColor: luminousColors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  annivDateNum: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  specialSlotSelected: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  countdownBanner: {
+    marginTop: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderRadius: 24,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  budgetIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#DBEAFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  budgetCol: {
-    flex: 1,
-  },
-  budgetSub: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#2563EB',
-    textTransform: 'uppercase',
-  },
-  budgetAmount: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1F2937',
-    marginTop: 1,
-  },
-  budgetTarget: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 1,
-  },
-  emptyPlannerContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginTop: 20,
-  },
-  emptyPlannerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1F2937',
-    marginBottom: 6,
-  },
-  emptyPlannerSub: {
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 300,
-  },
-  createPlanPrimaryBtn: {
-    backgroundColor: colors.primaryBlue,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  createPlanPrimaryBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  createPlanSecondaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  createPlanSecondaryBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primaryBlue,
-  },
-  fabButton: {
-    position: 'absolute',
-    bottom: 95,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#F43F5E',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#F43F5E',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
-    zIndex: 99,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-    width: '100%',
-    maxWidth: 420,
-  },
-  modalHeaderRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    shadowColor: 'rgba(185, 5, 56, 0.08)',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 4,
   },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1F2937',
+  countdownTextCol: {
+    flex: 1,
+    paddingRight: 10,
   },
-  inputSectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4B5563',
-    marginBottom: 6,
-  },
-  inputField: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-    padding: 12,
-    fontSize: 14,
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  modalSubmitButton: {
-    backgroundColor: '#1F2937',
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalSubmitButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  aiResultTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1F2937',
-  },
-  aiResultSub: {
-    fontSize: 13,
-    color: colors.primaryBlue,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  aiStopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  aiStopIndex: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#E5E7EB',
-    textAlign: 'center',
-    lineHeight: 20,
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#374151',
-  },
-  aiStopName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  aiStopNotes: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-
-  // Kalender Pasangan (Matching Image 3: Layar 7)
-  headerHeartCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FFE4E6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerBellBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#F8FAFC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  headerDsAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#E11D48',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#E11D48',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  headerDsAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  calendarCardWrapper: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-    marginBottom: 16,
-  },
-  weekDayLabelWeekend: {
-    color: '#F43F5E',
-    fontWeight: '700',
-  },
-  dayCellMilestone: {
-    backgroundColor: '#BE123C',
-    shadowColor: '#BE123C',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  dayCellEvent: {
-    backgroundColor: '#E11D48',
-    shadowColor: '#E11D48',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  dayNumberTextWhite: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-  },
-  calendarFilterPillsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F8FAFC',
-  },
-  calendarPillEventCount: {
-    backgroundColor: '#FFE4E6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+  countdownKickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 4,
   },
-  calendarPillDot: {
+  pingDot: {
     width: 7,
     height: 7,
-    borderRadius: 4,
-    backgroundColor: '#E11D48',
+    borderRadius: 3.5,
+    backgroundColor: luminousColors.primary,
   },
-  calendarPillEventText: {
+  countdownKicker: {
     fontSize: 11,
-    fontWeight: '800',
-    color: '#BE123C',
+    fontWeight: '700',
+    color: luminousColors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  calendarPillCategory: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+  countdownTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
   },
-  calendarPillCategoryText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
+  countdownSubtitle: {
+    fontSize: 12,
+    color: luminousColors.onSurfaceVariant,
+    marginTop: 2,
   },
-  calendarPillBell: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+  progressRingWrapper: {
+    position: 'relative',
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 'auto',
   },
-  agendaSectionMonthLabel: {
+  progressRingCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressRingPercent: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: luminousColors.onSurface,
+  },
+  agendaHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  agendaSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+  },
+  agendaCountLabel: {
+    fontSize: 11,
+    color: luminousColors.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  agendaListCol: {
+    gap: 16,
+  },
+  agendaCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderRadius: 24,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 12,
+  },
+  milestoneAgendaCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(185, 5, 56, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+  },
+  agendaCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  agendaDateThumb: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: luminousColors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  agendaDayNumber: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: luminousColors.primary,
+    lineHeight: 18,
+  },
+  agendaMonthText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: luminousColors.primary,
+    textTransform: 'uppercase',
+  },
+  agendaTitleCol: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  agendaCategoryPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  agendaCategoryText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  agendaMainTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+  },
+  agendaMoreBtn: {
+    padding: 4,
+  },
+  agendaImageWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: 120,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  agendaImage: {
+    width: '100%',
+    height: '100%',
+  },
+  agendaImageScrim: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(19, 27, 46, 0.35)',
+    justifyContent: 'flex-end',
+    padding: 10,
+  },
+  agendaBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  agendaBadgeText: {
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  agendaChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  agendaDetailChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: luminousColors.surfaceContainer,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 4,
+  },
+  agendaDetailChipText: {
+    fontSize: 11,
+    color: luminousColors.onSurface,
+    fontWeight: '500',
+  },
+  lockedNoteBox: {
+    backgroundColor: luminousColors.surfaceContainerLow,
+    borderRadius: 16,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  lockedNoteCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: luminousColors.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedNoteTextCol: {
+    flex: 1,
+  },
+  lockedNoteTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#E11D48',
+    color: luminousColors.onSurface,
   },
-  timelineRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 14,
-  },
-  timelineDateCol: {
-    width: 38,
-    alignItems: 'center',
-    paddingTop: 2,
-  },
-  timelineDateNumRose: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#E11D48',
-  },
-  timelineDateNumDark: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0F172A',
-  },
-  timelineDateDayText: {
+  lockedNoteHint: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
+    color: luminousColors.onSurfaceVariant,
     marginTop: 1,
   },
-  timelineLineRose: {
-    width: 2,
-    height: 60,
-    backgroundColor: '#FECDD3',
-    marginTop: 6,
-    borderRadius: 1,
-  },
-  timelineLineGray: {
-    width: 2,
-    height: 60,
-    backgroundColor: '#E2E8F0',
-    marginTop: 6,
-    borderRadius: 1,
-  },
-  timelineCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  timelineCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  timelineThumbImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#E2E8F0',
-  },
-  timelinePillRose: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFE4E6',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  timelinePillTextRose: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#E11D48',
-  },
-  timelinePillBlue: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  timelinePillTextBlue: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#2563EB',
-  },
-  timelineTitleText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  timelineSubText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  timelineFooterRow: {
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F8FAFC',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  timelineFooterNote: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#475569',
-  },
-  timelineFooterActionRose: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#E11D48',
-  },
-  timelineFooterActionBlue: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#2563EB',
-  },
-  timelineMilestoneCard: {
-    flex: 1,
-    backgroundColor: '#FFF1F2',
-    borderRadius: 24,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#FFE4E6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  timelineMilestoneBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#E11D48',
-    paddingHorizontal: 9,
-    paddingVertical: 2.5,
-    borderRadius: 999,
-    marginBottom: 6,
-  },
-  timelineMilestoneBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  timelineMilestoneTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#0F172A',
-  },
-  timelineMilestoneSub: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  timelineMilestoneIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#FFE4E6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timelineMilestoneFooterRow: {
-    marginTop: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#FFE4E6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  timelineMilestoneFooterNote: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#9F1239',
-  },
-  timelineMilestoneFooterAction: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#E11D48',
-  },
-  countdownBanner: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  countdownIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: '#FFE4E6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countdownTitleText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  countdownSubText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  calendarFabBtn: {
+  fabBtn: {
     position: 'absolute',
     bottom: 24,
     right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#E11D48',
+    backgroundColor: luminousColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#E11D48',
+    shadowColor: luminousColors.primary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
-    zIndex: 99,
+    shadowRadius: 14,
+    elevation: 8,
+    zIndex: 40,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    gap: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: luminousColors.onSurface,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: luminousColors.onSurfaceVariant,
+    marginTop: 6,
+  },
+  modalInput: {
+    backgroundColor: luminousColors.surfaceContainerLow,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: luminousColors.onSurface,
+  },
+  categorySelectRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  catOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: luminousColors.surfaceContainerLow,
+  },
+  catOptionActive: {
+    backgroundColor: luminousColors.primary,
+  },
+  catOptionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: luminousColors.onSurface,
+  },
+  catOptionTextActive: {
+    color: '#FFFFFF',
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: luminousColors.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: luminousColors.onSurface,
+  },
+  modalSubmitBtn: {
+    flex: 2,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: luminousColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSubmitText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

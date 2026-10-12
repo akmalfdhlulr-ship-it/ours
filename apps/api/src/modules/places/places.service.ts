@@ -54,18 +54,28 @@ export class PlacesService {
       });
 
       if (!place) {
-        place = await this.prisma.place.create({
-          data: {
-            provider: pr.provider,
-            providerPlaceId: pr.providerPlaceId,
-            name: pr.name,
-            address: pr.address,
-            category: pr.category,
-            latitude: pr.latitude,
-            longitude: pr.longitude,
-            metadata: pr.metadata || {},
-          },
-        });
+        try {
+          place = await this.prisma.place.create({
+            data: {
+              provider: pr.provider,
+              providerPlaceId: pr.providerPlaceId,
+              name: pr.name,
+              address: pr.address,
+              category: pr.category,
+              latitude: pr.latitude,
+              longitude: pr.longitude,
+              metadata: pr.metadata || {},
+            },
+          });
+        } catch {
+          // If created concurrently by another process or partner search, retrieve it
+          place = await this.prisma.place.findFirst({
+            where: {
+              provider: pr.provider,
+              providerPlaceId: pr.providerPlaceId,
+            },
+          });
+        }
       } else {
         place = await this.prisma.place.update({
           where: { id: place.id },
@@ -80,17 +90,19 @@ export class PlacesService {
         });
       }
 
-      syncedProviderPlaces.push({
-        id: place.id,
-        provider: place.provider,
-        providerPlaceId: place.providerPlaceId,
-        name: place.name,
-        address: place.address,
-        category: place.category,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        metadata: (place.metadata as any) || null,
-      });
+      if (place) {
+        syncedProviderPlaces.push({
+          id: place.id,
+          provider: place.provider,
+          providerPlaceId: place.providerPlaceId,
+          name: place.name,
+          address: place.address,
+          category: place.category,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          metadata: (place.metadata as any) || null,
+        });
+      }
     }
 
     // 4. Combine and check saved status for this couple space

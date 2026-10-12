@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
-  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -13,62 +13,52 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, spacing } from '@ours/design-tokens';
+import { colors, luminousColors } from '@ours/design-tokens';
 import { useAuth } from '@/context/auth-context';
+import { useCoupleData } from '@/context/couple-data-context';
 import { api } from '@/services/api';
-import {
-  HomeDashboardResponse,
-  DailySparkQuestionDto,
-  AiRelationshipInsightDto,
-  OursWrappedDto,
-} from '@ours/contracts';
+import { HomeDashboardResponse } from '@ours/contracts';
 import { Ionicons } from '@expo/vector-icons';
-import { formatTanggal } from '@/utils/format';
-import { ThreeDimensionalCoupleExperience } from '@/components/ThreeDimensionalCoupleExperience';
-import { CircularCarousel } from '@/components/free-components/CircularCarousel';
 import { SettingsDrawerModal } from '@/components/SettingsDrawerModal';
+
+
 
 export default function HomeTabScreen() {
   const router = useRouter();
   const { user, coupleSpace } = useAuth();
+  const {
+    isNewCoupleMode,
+    daysTogether,
+    partnerNames,
+    activeRole,
+    setActiveRole,
+    memories,
+    dates,
+    letters,
+    addLoveNote,
+    sendHeartbeat,
+    lastPulseSentAt,
+    lastPulseSender,
+  } = useCoupleData();
+
   const [dashboard, setDashboard] = useState<HomeDashboardResponse | null>(null);
-  const [dailySpark, setDailySpark] = useState<DailySparkQuestionDto | null>(null);
-  const [aiInsights, setAiInsights] = useState<AiRelationshipInsightDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
 
-  // Daily Spark modal state
-  const [showSparkModal, setShowSparkModal] = useState(false);
-  const [sparkAnswer, setSparkAnswer] = useState('');
-  const [sparkSubmitted, setSparkSubmitted] = useState(false);
-  const [submittingSpark, setSubmittingSpark] = useState(false);
+  // Quick reply note state
+  const [memoInput, setMemoInput] = useState('');
+  const [memoSentFeedback, setMemoSentFeedback] = useState(false);
 
-  // Wrapped modal state
-  const [showWrappedModal, setShowWrappedModal] = useState(false);
-  const [wrappedData, setWrappedData] = useState<OursWrappedDto | null>(null);
-  const [loadingWrapped, setLoadingWrapped] = useState(false);
+  // Heart send animation
+  const heartScaleAnim = useRef(new Animated.Value(1)).current;
 
   const fetchDashboard = useCallback(async () => {
     try {
-      setError(null);
-      const [dashRes, sparkRes, insightsRes] = await Promise.all([
-        api.home.getDashboard(),
-        api.games.getDailySpark().catch(() => null),
-        api.ai.insights().catch(() => []),
-      ]);
-      setDashboard(dashRes);
-      if (sparkRes) {
-        setDailySpark(sparkRes);
-        if (sparkRes.myCompleted) {
-          setSparkSubmitted(true);
-          if (sparkRes.myAnswer) setSparkAnswer(sparkRes.myAnswer);
-        }
-      }
-      if (insightsRes) setAiInsights(insightsRes);
-    } catch (err: any) {
-      setError(err?.message || 'Gagal memuat beranda pasangan');
+      const dashRes = await api.home.getDashboard().catch(() => null);
+      if (dashRes) setDashboard(dashRes);
+    } catch {
+      // Graceful fallback
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -84,974 +74,1117 @@ export default function HomeTabScreen() {
     fetchDashboard();
   };
 
-  const openWrapped = async () => {
-    setShowWrappedModal(true);
-    setLoadingWrapped(true);
-    try {
-      const data = await api.wrapped.get();
-      setWrappedData(data);
-    } catch (err: any) {
-      setError(err?.message || 'Gagal membuat OURS Wrapped');
-    } finally {
-      setLoadingWrapped(false);
+  const handleSendMemo = () => {
+    Animated.sequence([
+      Animated.timing(heartScaleAnim, { toValue: 1.35, duration: 150, useNativeDriver: true }),
+      Animated.timing(heartScaleAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+
+    if (memoInput.trim()) {
+      addLoveNote({
+        title: 'Memo Manis',
+        content: memoInput.trim(),
+        sender: member1,
+        recipient: member2,
+      });
+      setMemoSentFeedback(true);
+      setMemoInput('');
+      setTimeout(() => setMemoSentFeedback(false), 2600);
     }
   };
 
-  const handleSparkSubmit = async () => {
-    if (!sparkAnswer.trim() || submittingSpark) return;
-    setSubmittingSpark(true);
-    try {
-      const res = await api.games.answerDailySpark({ answer: sparkAnswer.trim() });
-      setDailySpark(res);
-      setSparkSubmitted(true);
-      setShowSparkModal(false);
-    } catch (err: any) {
-      setError(err?.message || 'Gagal mengirim jawaban percikan harian');
-    } finally {
-      setSubmittingSpark(false);
-    }
+  const handleSendPulse = () => {
+    Animated.sequence([
+      Animated.timing(heartScaleAnim, { toValue: 1.4, duration: 180, useNativeDriver: true }),
+      Animated.timing(heartScaleAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+    sendHeartbeat(member1);
   };
 
   if (loading && !dashboard) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primaryBlue} />
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={luminousColors.primary} />
         <Text style={styles.loadingText}>Memuat ruang cerita kita...</Text>
       </View>
     );
   }
 
-  const space = dashboard?.coupleSpace;
-  const partner = dashboard?.partner;
+  const daysCount = daysTogether;
+  const member1 = partnerNames.user;
+  const member2 = partnerNames.partner;
 
-  const calculateDaysTogether = (): number => {
-    if (space?.anniversaryDate) {
-      const start = new Date(space.anniversaryDate).getTime();
-      const now = Date.now();
-      const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-      return Math.max(0, diff);
-    }
-    return space?.daysTogether || 0;
-  };
+  // Milestone targets
+  const milestoneTarget =
+    daysCount < 7 ? 7 : daysCount < 30 ? 30 : daysCount < 100 ? 100 : 500;
+  const milestoneLabel =
+    daysCount < 7
+      ? 'Menuju 7 Hari Pertama 🌱'
+      : daysCount < 30
+      ? 'Menuju 1 Bulan Berdua 💕'
+      : daysCount < 100
+      ? 'Menuju 100 Hari Berdua 🌟'
+      : 'Menuju 500 Hari';
+  const remainingDays = Math.max(1, milestoneTarget - daysCount);
+  const progressPercent = Math.min(100, Math.round((daysCount / milestoneTarget) * 100));
 
-  const daysCount = calculateDaysTogether();
-  const partnerName = partner?.displayName || (coupleSpace?.status === 'ACTIVE' ? 'Pasangan' : 'Menunggu Pasangan');
-  const myName = (user as any)?.profile?.displayName || (user as any)?.displayName || user?.email?.split('@')[0] || 'Kamu';
-
-  const upcomingDate = dashboard?.upcomingDates && dashboard.upcomingDates.length > 0
-    ? dashboard.upcomingDates[0]
-    : null;
+  const upcomingDate = dates.length > 0 ? dates[0] : null;
+  const latestLetter = letters.length > 0 ? letters[0] : null;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primaryBlue} />}>
-      
-      {/* 1. Header Pasangan (Screenshot 2 Match) */}
-      <View style={styles.headerRow}>
+    <View style={styles.screenRoot}>
+      {/* ---------------- Header Bar ---------------- */}
+      <View style={styles.headerBar}>
         <View style={styles.headerLeft}>
-          <Image
-            source={{
-              uri: 'https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?auto=format&fit=crop&w=200&q=80',
-            }}
-            style={styles.headerCoupleAvatar}
-          />
-          <View style={styles.headerGreetingCol}>
-            <Text style={styles.headerGreetingSub}>Halo,</Text>
-            <Text style={styles.headerNamesTitle}>
-              {myName && partnerName && partnerName !== 'Menunggu Pasangan'
-                ? `${myName} & ${partnerName} 👋`
-                : 'Daniel & Sasa 👋'}
+          <View style={styles.headerAvatarOverlap}>
+            <View style={styles.headerIconCircle1}>
+              <Ionicons name="heart" size={17} color={luminousColors.primary} />
+            </View>
+            <View style={styles.headerIconCircle2}>
+              <Ionicons name="person" size={15} color={luminousColors.secondary} />
+            </View>
+            <View style={styles.syncedDot} />
+          </View>
+          <View style={styles.headerTitles}>
+            <Text style={styles.headerSyncText}>
+              OURS <Text style={styles.headerSyncDot}>•</Text> Synced
             </Text>
+            <Text style={styles.headerMainTitle}>Beranda</Text>
           </View>
         </View>
 
-        <View style={styles.headerActionsRight}>
+        <View style={styles.headerRight}>
           <TouchableOpacity
-            style={styles.bellButton}
+            style={styles.headerIconBtn}
             onPress={() => setShowSettingsDrawer(true)}
-            accessibilityRole="button"
+            activeOpacity={0.75}
             accessibilityLabel="Notifikasi">
-            <Ionicons name="notifications-outline" size={22} color="#1F2937" />
+            <Ionicons name="notifications-outline" size={22} color={luminousColors.onSurfaceVariant} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.profileBadge}
+            onPress={() => setShowSettingsDrawer(true)}
+            activeOpacity={0.8}
+            accessibilityLabel="Profil">
+            <Ionicons name="person" size={16} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 2. Days Counter Card (Soft Pink Card - Screenshot 2 Match) */}
-      <TouchableOpacity
-        style={styles.daysCounterCard}
-        onPress={openWrapped}
-        activeOpacity={0.92}>
-        <Ionicons
-          name="chevron-forward"
-          size={16}
-          color="#F472B6"
-          style={styles.daysCardChevron}
-        />
-        <View style={styles.daysTextCol}>
-          <Text style={styles.daysSubtitle}>Kita sudah bersama</Text>
-          <Text style={styles.daysNumber}>
-            {daysCount || 452} <Text style={styles.daysUnit}>hari</Text>
-          </Text>
-          <Text style={styles.daysSinceText}>
-            {space?.anniversaryDate ? `Sejak ${formatTanggal(space.anniversaryDate)}` : 'Sejak 14 Feb 2023'}
-          </Text>
-        </View>
-        <View style={styles.heartButtonCircle}>
-          <Ionicons name="heart" size={26} color="#FF3366" />
-        </View>
-      </TouchableOpacity>
-
-      {/* 3. Rencana Berikutnya Card (Screenshot 2 Match) */}
-      <TouchableOpacity
-        style={styles.upcomingDateCard}
-        onPress={() => router.push('/(tabs)/dates')}
-        activeOpacity={0.9}>
-        <View style={styles.upcomingDateContent}>
-          <Text style={styles.upcomingDateSubLabel}>Rencana berikutnya</Text>
-          <Text style={styles.upcomingDateTitle} numberOfLines={1}>
-            {upcomingDate?.title || 'Makan malam di ORO'}
-          </Text>
-          <Text style={styles.upcomingDateSubtitle}>
-            {upcomingDate?.plannedDate
-              ? formatTanggal(upcomingDate.plannedDate)
-              : 'Sab, 20 Apr 2024 · 19.00'}
-          </Text>
-        </View>
-        <Image
-          source={{
-            uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=400&q=80',
-          }}
-          style={styles.upcomingDateThumb}
-        />
-      </TouchableOpacity>
-
-      {/* 4. Aksi Cepat 4-Grid Icon Bulat (Screenshot 2 Match) */}
-      <View style={styles.quickActionsContainer}>
-        <View style={styles.quickGridRow}>
-          {/* Jelajahi */}
-          <TouchableOpacity
-            style={styles.quickGridItem}
-            onPress={() => router.push('/(tabs)/explore')}
-            activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#FFF1E8' }]}>
-              <Ionicons name="compass" size={24} color="#EA580C" />
-            </View>
-            <Text style={styles.quickLabel}>Jelajahi</Text>
-          </TouchableOpacity>
-
-          {/* Kalender */}
-          <TouchableOpacity
-            style={styles.quickGridItem}
-            onPress={() => router.push('/(tabs)/dates')}
-            activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#EDF2FE' }]}>
-              <Ionicons name="calendar" size={24} color="#2563EB" />
-            </View>
-            <Text style={styles.quickLabel}>Kalender</Text>
-          </TouchableOpacity>
-
-          {/* Pengeluaran */}
-          <TouchableOpacity
-            style={styles.quickGridItem}
-            onPress={() => router.push('/(tabs)/visits')}
-            activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#EBF5FE' }]}>
-              <Ionicons name="bag-handle" size={24} color="#0284C7" />
-            </View>
-            <Text style={styles.quickLabel}>Pengeluaran</Text>
-          </TouchableOpacity>
-
-          {/* Kenangan */}
-          <TouchableOpacity
-            style={styles.quickGridItem}
-            onPress={() => router.push('/(tabs)/hub')}
-            activeOpacity={0.85}>
-            <View style={[styles.quickRoundIcon, { backgroundColor: '#FDF0F3' }]}>
-              <Ionicons name="camera" size={24} color="#E11D48" />
-            </View>
-            <Text style={styles.quickLabel}>Kenangan</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 5. Kenangan Terbaru - 3 Photo Grid (Screenshot 2 Match) */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Kenangan Terbaru</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/hub')}>
-          <Text style={styles.sectionLinkPink}>Lihat Semua &gt;</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.memoriesThreeGrid}>
-        <TouchableOpacity
-          style={styles.memoryGridItem}
-          onPress={() => router.push('/(tabs)/hub')}
-          activeOpacity={0.88}>
-          <Image
-            source={{
-              uri:
-                dashboard?.recentMemories?.[0]?.coverUrl ||
-                'https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?auto=format&fit=crop&w=400&q=80',
-            }}
-            style={styles.memoryGridImage}
-            resizeMode="cover"
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={luminousColors.primary}
           />
-        </TouchableOpacity>
+        }>
+        {/* ---------------- 1. Hero Milestone Card ---------------- */}
+        <View style={styles.heroMilestoneCard}>
+          {/* Ambient Glows */}
+          <View style={styles.heroGlowTopRight} pointerEvents="none" />
+          <View style={styles.heroGlowBottomLeft} pointerEvents="none" />
 
-        <TouchableOpacity
-          style={styles.memoryGridItem}
-          onPress={() => router.push('/(tabs)/hub')}
-          activeOpacity={0.88}>
-          <Image
-            source={{
-              uri:
-                dashboard?.recentMemories?.[1]?.coverUrl ||
-                'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80',
-            }}
-            style={styles.memoryGridImage}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.memoryGridItem}
-          onPress={() => router.push('/(tabs)/hub')}
-          activeOpacity={0.88}>
-          <Image
-            source={{
-              uri:
-                dashboard?.recentMemories?.[2]?.coverUrl ||
-                'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=400&q=80',
-            }}
-            style={styles.memoryGridImage}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* 6. Milestone & Refleksi Keintiman 2D */}
-      <ThreeDimensionalCoupleExperience
-        milestoneTitle={space?.name ? `Kisah ${space.name}` : 'Ikatan Cinta Kita'}
-        daysTogether={daysCount}
-        onExploreMilestone={openWrapped}
-      />
-
-      {/* 7. Percikan Harian (Daily Spark) */}
-      {dailySpark && (
-        <View style={styles.dailySparkBox}>
-          <View style={styles.sparkTopBadgeRow}>
-            <View style={styles.sparkPill}>
-              <Ionicons name="sparkles" size={13} color="#2563EB" />
-              <Text style={styles.sparkPillText}>Percikan Harian</Text>
-            </View>
-            <Text style={styles.sparkDateText}>{formatTanggal(dailySpark.date)}</Text>
-          </View>
-          <Text style={styles.sparkQuestionText}>{dailySpark.question}</Text>
-
-          {dailySpark.revealed ? (
-            /* KEDUA JAWABAN TERUNGKAP */
-            <View style={styles.sparkRevealedContainer}>
-              <View style={styles.sparkMutualBadge}>
-                <Ionicons name="heart" size={14} color="#E11D48" />
-                <Text style={styles.sparkMutualBadgeText}>Kedua Jawaban Terungkap Bersama! ❤️</Text>
-              </View>
-
-              <View style={styles.sparkAnswerRow}>
-                <View style={styles.sparkAnswerBoxMe}>
-                  <Text style={styles.sparkAnswerAuthorText}>{myName || 'Kamu'}:</Text>
-                  <Text style={styles.sparkAnswerContentText}>"{dailySpark.myAnswer}"</Text>
-                </View>
-
-                <View style={styles.sparkAnswerBoxPartner}>
-                  <Text style={styles.sparkAnswerAuthorText}>{partnerName || 'Pasangan'}:</Text>
-                  <Text style={styles.sparkAnswerContentText}>"{dailySpark.partnerAnswer}"</Text>
-                </View>
-              </View>
-            </View>
-          ) : dailySpark.myCompleted ? (
-            /* MENUNGGU PASANGAN */
-            <View style={styles.sparkWaitingContainer}>
-              <View style={styles.sparkAnswerBoxMe}>
-                <Text style={styles.sparkAnswerAuthorText}>Jawabanmu:</Text>
-                <Text style={styles.sparkAnswerContentText}>"{dailySpark.myAnswer}"</Text>
-              </View>
-              <View style={styles.sparkLockStatusRow}>
-                <Ionicons name="lock-closed" size={14} color="#D97706" />
-                <Text style={styles.sparkLockStatusText}>
-                  Menunggu pasanganmu menjawab untuk membuka kedua jawaban berdua! 💌
-                </Text>
-              </View>
-            </View>
-          ) : (
-            /* BELUM MENJAWAB */
-            <View>
-              {dailySpark.partnerCompleted && (
-                <View style={styles.sparkPartnerReadyBanner}>
-                  <Ionicons name="notifications" size={13} color="#2563EB" />
-                  <Text style={styles.sparkPartnerReadyText}>
-                    {partnerName || 'Pasanganmu'} sudah menjawab! Jawab sekarang untuk membuka rahasianya.
+          {/* Connected Avatars */}
+          <View style={styles.connectedAvatarsRow}>
+            <View style={styles.avatarCircleLeft}>
+              {(user as any)?.avatarUrl ? (
+                <Image source={{ uri: (user as any).avatarUrl }} style={styles.avatarImg} />
+              ) : (
+                <View style={[styles.avatarImg, { backgroundColor: luminousColors.primary, justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                    {member1.charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
+            </View>
+            <View style={styles.avatarHeartBridge}>
+              <Ionicons name="heart" size={13} color={luminousColors.primary} />
+            </View>
+            <View style={styles.avatarCircleRight}>
+              {(coupleSpace as any)?.partnerAvatarUrl ? (
+                <Image source={{ uri: (coupleSpace as any).partnerAvatarUrl }} style={styles.avatarImg} />
+              ) : (
+                <View style={[styles.avatarImg, { backgroundColor: luminousColors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                    {member2.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Days Counter */}
+          <View style={styles.counterRow}>
+            <Text style={styles.counterNumber}>{daysCount}</Text>
+            <Text style={styles.counterUnit}>Hari</Text>
+          </View>
+          <Text style={styles.counterSubtitle}>
+            Merajut Cerita {member1} &amp; {member2}
+          </Text>
+
+          {/* Milestone Progress Bar */}
+          <View style={styles.milestoneProgressContainer}>
+            <View style={styles.milestoneProgressHeader}>
+              <View style={styles.milestoneLabelGroup}>
+                <Ionicons name="flag-outline" size={13} color={luminousColors.primary} />
+                <Text style={styles.milestoneLabelText}>{milestoneLabel}</Text>
+              </View>
+              <Text style={styles.milestoneRemainingText}>
+                {remainingDays} hari lagi
+              </Text>
+            </View>
+            <View style={styles.progressBarTrack}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${progressPercent}%` },
+                ]}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* ---------------- 2. Detak Rasa Hari Ini (Daily Mood) ---------------- */}
+        <View style={styles.moodSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Detak Rasa Hari Ini</Text>
+            <TouchableOpacity
+              style={styles.syncStatusGroup}
+              onPress={handleSendPulse}
+              activeOpacity={0.7}>
+              <View style={styles.syncPulseDot} />
+              <Text style={styles.syncStatusText}>
+                {lastPulseSentAt ? 'Detak terkirim baru saja ❤️' : 'Ketuk untuk kirim cinta'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.moodCardsCol}>
+            {/* User Mood */}
+            <TouchableOpacity
+              style={styles.moodCard}
+              activeOpacity={0.88}
+              onPress={handleSendPulse}>
+              <View style={styles.moodCardLeft}>
+                <View style={styles.moodIconBgTertiary}>
+                  <Ionicons name="flower-outline" size={18} color="#A63047" />
+                </View>
+                <View style={styles.moodTextGroup}>
+                  <Text style={styles.moodWho}>
+                    {member1} (Kamu hari ini)
+                  </Text>
+                  <Text style={styles.moodStatus}>
+                    {lastPulseSentAt ? '🌸 Detak Cinta Terkirim' : '🌸 Siap Kencan Romantis'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="heart" size={18} color={luminousColors.primary} />
+            </TouchableOpacity>
+
+            {/* Partner Mood */}
+            <TouchableOpacity
+              style={styles.moodCard}
+              activeOpacity={0.88}
+              onPress={handleSendPulse}>
+              <View style={styles.moodCardLeft}>
+                <View style={styles.moodIconBgSecondary}>
+                  <Ionicons name="cafe-outline" size={18} color="#00668A" />
+                </View>
+                <View style={styles.moodTextGroup}>
+                  <Text style={styles.moodWho}>
+                    {member2} (Pasangan)
+                  </Text>
+                  <Text style={styles.moodStatus}>
+                    {coupleSpace?.status === 'ACTIVE' ? '☕ Terhubung Real-Time' : '🌱 Menunggu Bergabung'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="heart" size={18} color={luminousColors.secondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ---------------- 3. Kencan Terdekat ---------------- */}
+        <View style={styles.upcomingSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.upcomingHeaderGroup}>
+              <Ionicons name="wine-outline" size={18} color={luminousColors.primary} />
+              <Text style={styles.sectionTitle}>Kencan Terdekat</Text>
+            </View>
+            {upcomingDate && (
+              <View style={styles.malamIniBadge}>
+                <Text style={styles.malamIniBadgeText}>Segera</Text>
+              </View>
+            )}
+          </View>
+
+          {upcomingDate ? (
+            <View style={styles.upcomingDateCard}>
+              <View style={styles.upcomingDateHero}>
+                {upcomingDate.imageUrl ? (
+                  <Image
+                    source={{ uri: upcomingDate.imageUrl }}
+                    style={styles.upcomingHeroImg}
+                  />
+                ) : (
+                  <View style={[styles.upcomingHeroImg, { backgroundColor: '#34406B' }]} />
+                )}
+                <View style={styles.upcomingScrim} />
+
+                <View style={styles.tableBadge}>
+                  <Ionicons name="restaurant-outline" size={13} color={luminousColors.primary} />
+                  <Text style={styles.tableBadgeText}>{upcomingDate.venueName || 'Kencan Spesial'}</Text>
+                </View>
+
+                <View style={styles.upcomingDateHeroInfo}>
+                  <Text style={styles.upcomingDateCategory}>AGENDA BERDUA</Text>
+                  <Text style={styles.upcomingDateTitle}>{upcomingDate.title}</Text>
+                </View>
+              </View>
+
+              <View style={styles.upcomingDateBottomBar}>
+                <View style={styles.upcomingDateTimeGroup}>
+                  <View style={styles.timeIconCircle}>
+                    <Ionicons name="time-outline" size={20} color={luminousColors.primary} />
+                  </View>
+                  <View>
+                    <Text style={styles.timeText}>{upcomingDate.time || '19.00 WIB'}</Text>
+                    <Text style={styles.confirmedText}>
+                      {upcomingDate.date || 'Terkonfirmasi'}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.ruteBtn}
+                  onPress={() => router.push('/(tabs)/dates')}
+                  activeOpacity={0.88}>
+                  <Text style={styles.ruteBtnText}>Detail</Text>
+                  <Ionicons name="chevron-forward" size={15} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.upcomingDateCard, { padding: 22, alignItems: 'center', backgroundColor: '#FFFFFF' }]}>
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFEBF0', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <Ionicons name="calendar-outline" size={24} color={luminousColors.primary} />
+              </View>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: luminousColors.onSurface, marginBottom: 6, textAlign: 'center' }}>
+                Belum Ada Jadwal Kencan Berdua ✨
+              </Text>
+              <Text style={{ fontSize: 13, color: luminousColors.onSurfaceVariant, textAlign: 'center', marginBottom: 16, lineHeight: 19 }}>
+                Mulai petualangan cinta kalian dengan merencanakan kencan pertama yang romantis bersama {member2}.
+              </Text>
               <TouchableOpacity
-                style={styles.sparkCTAButton}
-                onPress={() => setShowSparkModal(true)}
-                activeOpacity={0.85}>
-                <Text style={styles.sparkCTAButtonText}>
-                  {dailySpark.partnerCompleted ? 'Jawab & Buka Bersama' : 'Bagikan Jawabanmu'}
-                </Text>
-                <Ionicons name="chatbubble-ellipses" size={15} color="#FFFFFF" />
+                style={[styles.ruteBtn, { paddingHorizontal: 20, height: 40 }]}
+                onPress={() => router.push('/(tabs)/dates')}
+                activeOpacity={0.88}>
+                <Ionicons name="add" size={17} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.ruteBtnText}>Rencanakan Kencan</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
-      )}
 
-      {/* Modal Percikan Harian */}
-      <Modal visible={showSparkModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Jawab Percikan Harian</Text>
-              <TouchableOpacity onPress={() => setShowSparkModal(false)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
+        {/* ---------------- 4. Love Note Memo ---------------- */}
+        <View style={styles.memoCard}>
+          <View style={styles.memoHeaderRow}>
+            <View style={styles.memoAuthorGroup}>
+              <View style={styles.memoIconBg}>
+                <Ionicons name="mail" size={14} color={luminousColors.primary} />
+              </View>
+              <Text style={styles.memoAuthorText}>
+                {latestLetter ? `Memo Sayang dari ${latestLetter.sender}` : 'Memo Sayang Pertama 💌'}
+              </Text>
             </View>
-            <Text style={styles.modalQuestion}>{dailySpark?.question}</Text>
+            <Text style={styles.memoTimeText}>
+              {latestLetter ? latestLetter.sealedDate : 'Hari Ini'}
+            </Text>
+          </View>
+
+          <View style={styles.memoQuoteBox}>
+            <Text style={styles.memoQuoteText}>
+              {latestLetter
+                ? `“${latestLetter.fullText}”`
+                : '“Ruang pesan masih bersih. Tuliskan pesan manis pertamamu untuk menyapa harinya hari ini! ✨”'}
+            </Text>
+          </View>
+
+          <View style={styles.memoInputRow}>
             <TextInput
-              style={styles.modalTextInput}
-              placeholder="Tuliskan jawaban tulus untuk pasanganmu..."
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={4}
-              value={sparkAnswer}
-              onChangeText={setSparkAnswer}
+              style={styles.memoTextInput}
+              placeholder={memoSentFeedback ? 'Terkirim dengan hangat! ❤️' : 'Kirim sapaan manis atau balas...'}
+              placeholderTextColor="#8F6F71"
+              value={memoInput}
+              onChangeText={setMemoInput}
             />
-            <TouchableOpacity
-              style={styles.modalSubmitButton}
-              onPress={handleSparkSubmit}
-              disabled={submittingSpark}
-              activeOpacity={0.88}>
-              {submittingSpark ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.modalSubmitButtonText}>Kirim Jawaban</Text>
-              )}
-            </TouchableOpacity>
+            <Animated.View style={{ transform: [{ scale: heartScaleAnim }] }}>
+              <TouchableOpacity
+                style={styles.memoHeartSendBtn}
+                onPress={handleSendMemo}
+                activeOpacity={0.85}>
+                <Ionicons name="heart" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </Animated.View>
           </View>
         </View>
-      </Modal>
 
-      {/* Modal OURS Wrapped */}
-      <Modal visible={showWrappedModal} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Kilas Balik OURS Wrapped</Text>
-              <TouchableOpacity onPress={() => setShowWrappedModal(false)}>
-                <Ionicons name="close" size={22} color="#6B7280" />
+        {/* ---------------- 5. 4 Quick Shortcuts ---------------- */}
+        <View style={styles.shortcutsGrid}>
+          {/* Jelajah */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={() => router.push('/(tabs)/explore')}
+            activeOpacity={0.85}>
+            <View style={[styles.shortcutIconBg, { backgroundColor: '#E2E7FF' }]}>
+              <Ionicons name="compass" size={22} color={luminousColors.secondary} />
+            </View>
+            <Text style={styles.shortcutLabel}>Jelajah</Text>
+          </TouchableOpacity>
+
+          {/* Kalender */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={() => router.push('/(tabs)/dates')}
+            activeOpacity={0.85}>
+            <View style={[styles.shortcutIconBg, { backgroundColor: '#FFDADB' }]}>
+              <Ionicons name="calendar" size={22} color={luminousColors.primary} />
+            </View>
+            <Text style={styles.shortcutLabel}>Kalender</Text>
+          </TouchableOpacity>
+
+          {/* Dompet */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={() => router.push('/(tabs)/visits')}
+            activeOpacity={0.85}>
+            <View style={[styles.shortcutIconBg, { backgroundColor: '#E2E7FF' }]}>
+              <Ionicons name="wallet" size={22} color={luminousColors.secondary} />
+            </View>
+            <Text style={styles.shortcutLabel}>Dompet</Text>
+          </TouchableOpacity>
+
+          {/* Kenangan */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={() => router.push('/memories' as any)}
+            activeOpacity={0.85}>
+            <View style={[styles.shortcutIconBg, { backgroundColor: '#FFDADC' }]}>
+              <Ionicons name="book" size={22} color={luminousColors.tertiary} />
+            </View>
+            <Text style={styles.shortcutLabel}>Kenangan</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ---------------- 6. Momen Manis Pekan Ini (Polaroids) ---------------- */}
+        <View style={styles.polaroidSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.upcomingHeaderGroup}>
+              <Ionicons name="images-outline" size={18} color={luminousColors.primary} />
+              <Text style={styles.sectionTitle}>Momen Manis Pekan Ini</Text>
+            </View>
+            <Text style={styles.photoCountText}>
+              {memories.length > 0 ? `${memories.length} foto tersimpan` : 'Buku Waktu Baru'}
+            </Text>
+          </View>
+
+          {memories.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.polaroidScroll}>
+              {memories.map((mem) => (
+                <TouchableOpacity
+                  key={mem.id}
+                  style={styles.polaroidCard}
+                  onPress={() => router.push('/memories' as any)}
+                  activeOpacity={0.88}>
+                  <View style={styles.polaroidImgBox}>
+                    <Image source={{ uri: mem.imageUrl }} style={styles.polaroidImg} />
+                  </View>
+                  <Text style={styles.polaroidTitle} numberOfLines={1}>
+                    {mem.title}
+                  </Text>
+                  <Text style={styles.polaroidSubtitle} numberOfLines={1}>
+                    {mem.locationName || mem.date} • Oleh {mem.author}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity
+                style={[styles.polaroidCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F6FA' }]}
+                onPress={() => router.push('/memories' as any)}
+                activeOpacity={0.85}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFEBF0', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
+                  <Ionicons name="add" size={24} color={luminousColors.primary} />
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: luminousColors.primary }}>+ Tambah Foto</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : (
+            <View style={[styles.upcomingDateCard, { padding: 20, alignItems: 'center', backgroundColor: '#FFFFFF' }]}>
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFEBF0', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <Ionicons name="camera-outline" size={24} color={luminousColors.primary} />
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: luminousColors.onSurface, marginBottom: 4, textAlign: 'center' }}>
+                Buku Waktu Masih Bersih 📸
+              </Text>
+              <Text style={{ fontSize: 13, color: luminousColors.onSurfaceVariant, textAlign: 'center', marginBottom: 14, lineHeight: 18 }}>
+                Belum ada foto yang tersimpan. Abadikan senyum dan momen pertama kalian berdua untuk mulai membangun album cinta bersama.
+              </Text>
+              <TouchableOpacity
+                style={[styles.ruteBtn, { paddingHorizontal: 18, height: 38 }]}
+                onPress={() => router.push('/memories' as any)}
+                activeOpacity={0.88}>
+                <Ionicons name="image-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.ruteBtnText}>Simpan Foto Berdua</Text>
               </TouchableOpacity>
             </View>
-            {loadingWrapped ? (
-              <ActivityIndicator size="large" color={colors.primaryBlue} style={{ marginVertical: 32 }} />
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 12 }}>
-                <Text style={styles.wrappedYearHeading}>Perjalanan Cinta Kita</Text>
-                <Text style={styles.wrappedSummaryText}>
-                  {wrappedData
-                    ? `Kalian telah menyelesaikan ${wrappedData.totalDatesCompleted} kencan dari ${wrappedData.totalDatesPlanned} rencana, mencatat ${wrappedData.totalVisitsLogged} kunjungan tempat spesial, dan mengabadikan ${wrappedData.totalMemoriesCreated} kenangan indah!`
-                    : 'Kalian telah mengunjungi berbagai tempat romantis, mencatat puluhan kenangan indah, dan terus bertumbuh bersama setiap harinya.'}
-                </Text>
-                <View style={styles.wrappedStatsGrid}>
-                  <View style={styles.wrappedStatCard}>
-                    <Text style={styles.wrappedStatNumber}>{daysCount}</Text>
-                    <Text style={styles.wrappedStatLabel}>Hari Bersama</Text>
-                  </View>
-                  <View style={styles.wrappedStatCard}>
-                    <Text style={styles.wrappedStatNumber}>{dashboard?.upcomingDates?.length || 3}</Text>
-                    <Text style={styles.wrappedStatLabel}>Kencan Selesai</Text>
-                  </View>
-                </View>
-              </ScrollView>
-            )}
-            <TouchableOpacity
-              style={styles.modalSubmitButton}
-              onPress={() => setShowWrappedModal(false)}>
-              <Text style={styles.modalSubmitButtonText}>Tutup Kilas Balik</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
-      </Modal>
+      </ScrollView>
 
-      {/* Drawer Pengaturan (Hamburger) */}
+      {/* Settings / Profile Drawer */}
       <SettingsDrawerModal
         visible={showSettingsDrawer}
         onClose={() => setShowSettingsDrawer(false)}
       />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screenRoot: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FAF8FF',
   },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 56 : 28,
-    paddingBottom: 110,
-    maxWidth: 520,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  center: {
+  centerContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F8F9FA',
+    alignItems: 'center',
+    backgroundColor: '#FAF8FF',
     gap: 12,
   },
   loadingText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#5B4041',
     fontWeight: '500',
   },
-  // Header Pasangan
-  headerRow: {
+
+  // ---------------- Header Bar ----------------
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 52 : 36,
+    paddingBottom: 14,
+    backgroundColor: 'rgba(250, 248, 255, 0.88)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(218, 226, 253, 0.4)',
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
-  headerCoupleAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#F3F4F6',
-  },
-  headerGreetingCol: {
-    justifyContent: 'center',
-  },
-  headerGreetingSub: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  headerNamesTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1F2937',
-  },
-  headerActionsRight: {
+  headerAvatarOverlap: {
     flexDirection: 'row',
     alignItems: 'center',
+    position: 'relative',
+    width: 48,
+    height: 36,
   },
-  bellButton: {
+  headerIconCircle1: {
+    position: 'absolute',
+    left: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DAE2FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FAF8FF',
+  },
+  headerIconCircle2: {
+    position: 'absolute',
+    left: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#C4E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FAF8FF',
+  },
+  syncedDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#40C2FD',
+    borderWidth: 1.5,
+    borderColor: '#FAF8FF',
+  },
+  headerTitles: {
+    gap: 1,
+  },
+  headerSyncText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#5B4041',
+  },
+  headerSyncDot: {
+    color: '#B90538',
+    fontWeight: '800',
+  },
+  headerMainTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#131B2E',
+    letterSpacing: -0.4,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#B90538',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#B90538',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+
+  // ---------------- Content ----------------
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 120,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+    gap: 20,
+  },
+
+  // ---------------- 1. Hero Milestone Card ----------------
+  heroMilestoneCard: {
+    borderRadius: 28,
+    padding: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.84)',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#B90538',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 28,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.95)',
+  },
+  heroGlowTopRight: {
+    position: 'absolute',
+    top: -36,
+    right: -36,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255, 218, 219, 0.45)',
+  },
+  heroGlowBottomLeft: {
+    position: 'absolute',
+    bottom: -30,
+    left: -30,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(196, 231, 255, 0.45)',
+  },
+  connectedAvatarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  avatarCircleLeft: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  avatarCircleRight: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    marginLeft: -12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarHeartBridge: {
+    position: 'absolute',
+    zIndex: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+  },
+  counterNumber: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#B90538',
+    letterSpacing: -1,
+  },
+  counterUnit: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#5B4041',
+  },
+  counterSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#5B4041',
+    marginTop: 2,
+  },
+  milestoneProgressContainer: {
+    width: '100%',
+    marginTop: 16,
+    backgroundColor: '#F2F3FF',
+    borderRadius: 9999,
+    padding: 8,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  milestoneProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  milestoneLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  milestoneLabelText: {
+    fontSize: 11,
+    color: '#5B4041',
+    fontWeight: '600',
+  },
+  milestoneRemainingText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B90538',
+  },
+  progressBarTrack: {
+    height: 7,
+    backgroundColor: '#E2E7FF',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#B90538',
+    borderRadius: 4,
+  },
+
+  // ---------------- 2. Detak Rasa ----------------
+  moodSection: {
+    gap: 10,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#131B2E',
+  },
+  syncStatusGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  syncPulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#00668A',
+  },
+  syncStatusText: {
+    fontSize: 11,
+    color: '#00668A',
+    fontWeight: '600',
+  },
+  moodCardsCol: {
+    gap: 8,
+  },
+  moodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  moodCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  moodIconBgTertiary: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFDADC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moodIconBgSecondary: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#C4E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moodTextGroup: {
+    flex: 1,
+  },
+  moodWho: {
+    fontSize: 11,
+    color: '#5B4041',
+  },
+  moodStatus: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#131B2E',
+    marginTop: 1,
+  },
+
+  // ---------------- 3. Upcoming Date ----------------
+  upcomingSection: {
+    gap: 10,
+  },
+  upcomingHeaderGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  malamIniBadge: {
+    backgroundColor: '#FFDADB',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 9999,
+  },
+  malamIniBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B90538',
+  },
+  upcomingDateCard: {
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  upcomingDateHero: {
+    height: 170,
+    position: 'relative',
+  },
+  upcomingHeroImg: {
+    width: '100%',
+    height: '100%',
+  },
+  upcomingScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(19, 27, 46, 0.4)',
+  },
+  tableBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tableBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#131B2E',
+  },
+  upcomingDateHeroInfo: {
+    position: 'absolute',
+    bottom: 12,
+    left: 14,
+    right: 14,
+  },
+  upcomingDateCategory: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    opacity: 0.9,
+  },
+  upcomingDateTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  upcomingDateBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  upcomingDateTimeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  timeIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#E2E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#131B2E',
+  },
+  confirmedText: {
+    fontSize: 11,
+    color: '#5B4041',
+  },
+  ruteBtn: {
+    backgroundColor: '#B90538',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ruteBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // ---------------- 4. Love Note Memo ----------------
+  memoCard: {
+    borderRadius: 24,
+    padding: 18,
+    backgroundColor: 'rgba(242, 243, 255, 0.75)',
+    gap: 12,
+  },
+  memoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  memoAuthorGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  memoIconBg: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFDADB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoAuthorText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#131B2E',
+  },
+  memoTimeText: {
+    fontSize: 11,
+    color: '#5B4041',
+  },
+  memoQuoteBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    padding: 14,
+    borderRadius: 18,
+  },
+  memoQuoteText: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontStyle: 'italic',
+    color: '#131B2E',
+  },
+  memoInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memoTextInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 16,
+    fontSize: 13,
+    color: '#131B2E',
+  },
+  memoHeartSendBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#B90538',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ---------------- 5. Shortcuts ----------------
+  shortcutsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  shortcutCard: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  shortcutIconBg: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
-  // Days Counter Card (Screenshot 2 Match: Soft Pink Background)
-  daysCounterCard: {
-    backgroundColor: '#FFE9ED',
-    borderRadius: 24,
-    padding: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    position: 'relative',
-    shadowColor: '#FDA4AF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+  shortcutLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#131B2E',
+  },
+
+  // ---------------- 6. Polaroid Section ----------------
+  polaroidSection: {
+    gap: 12,
+  },
+  photoCountText: {
+    fontSize: 11,
+    color: '#5B4041',
+    fontWeight: '500',
+  },
+  polaroidScroll: {
+    gap: 12,
+    paddingBottom: 4,
+  },
+  polaroidCard: {
+    width: 175,
+    padding: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2,
-    marginBottom: 18,
   },
-  daysCardChevron: {
-    position: 'absolute',
-    top: 18,
-    right: 20,
-  },
-  daysTextCol: {
-    flex: 1,
-  },
-  daysSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#4B5563',
-    marginBottom: 4,
-  },
-  daysNumber: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  daysUnit: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  daysSinceText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  heartButtonCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#FDA4AF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  // Section Headers
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    marginTop: 6,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1F2937',
-  },
-  sectionLink: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primaryBlue,
-  },
-  sectionLinkPink: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FF3366',
-  },
-  // Upcoming Date Card (Screenshot 2 Match)
-  upcomingDateCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    marginBottom: 18,
-  },
-  upcomingDateContent: {
-    flex: 1,
-    marginRight: 14,
-  },
-  upcomingDateSubLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  upcomingDateTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  upcomingDateSubtitle: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '500',
-  },
-  upcomingDateThumb: {
-    width: 86,
-    height: 60,
+  polaroidImgBox: {
+    width: '100%',
+    height: 130,
     borderRadius: 14,
-    backgroundColor: '#F3F4F6',
-  },
-  // Quick Actions 4-Grid
-  quickActionsContainer: {
-    marginVertical: 10,
-  },
-  quickGridRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  quickGridItem: {
-    alignItems: 'center',
-    width: '23%',
-  },
-  quickRoundIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  quickLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-    textAlign: 'center',
-  },
-  // Memories 3-Grid
-  memoriesThreeGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
-  },
-  memoryGridItem: {
-    flex: 1,
-    height: 110,
-    borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#F3F4F6',
-  },
-  memoryGridImage: {
-    width: '100%',
-    height: '100%',
-  },
-  // Memories Carousel
-  memoryCarouselContainer: {
-    gap: 12,
-    paddingBottom: 6,
-  },
-  memoryCardItem: {
-    width: 140,
-    height: 180,
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: '#E5E7EB',
-  },
-  memoryCardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  memoryCardOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  memoryCardTextBox: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    right: 10,
-  },
-  memoryCardTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  memoryCardDate: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 2,
-  },
-  memoryEmptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-    marginBottom: 16,
-  },
-  memoryEmptyIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#FFF1F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  memoryEmptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  memoryEmptySubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 18,
-    maxWidth: 280,
-    marginBottom: 14,
-  },
-  memoryEmptyActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: '#FFF1F2',
-  },
-  memoryEmptyActionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#F43F5E',
-  },
-  // Daily Spark Box
-  dailySparkBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginTop: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sparkTopBadgeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 8,
+    backgroundColor: '#F2F3FF',
   },
-  sparkPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    gap: 4,
-  },
-  sparkPillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#2563EB',
-  },
-  sparkDateText: {
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
-  sparkQuestionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-    lineHeight: 22,
-    marginBottom: 14,
-  },
-  sparkCTAButton: {
-    backgroundColor: colors.primaryBlue,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  sparkCTAButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  sparkRevealedContainer: {
-    marginTop: 4,
-    gap: 8,
-  },
-  sparkMutualBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFE4E6',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-  sparkMutualBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#E11D48',
-  },
-  sparkAnswerRow: {
-    gap: 8,
-  },
-  sparkAnswerBoxMe: {
-    backgroundColor: '#F0F9FF',
-    borderRadius: 12,
-    padding: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#0284C7',
-  },
-  sparkAnswerBoxPartner: {
-    backgroundColor: '#FFF1F2',
-    borderRadius: 12,
-    padding: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#F43F5E',
-  },
-  sparkAnswerAuthorText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#374151',
-    textTransform: 'uppercase',
-    marginBottom: 3,
-  },
-  sparkAnswerContentText: {
-    fontSize: 13,
-    fontStyle: 'italic',
-    color: '#1F2937',
-    lineHeight: 18,
-  },
-  sparkWaitingContainer: {
-    gap: 8,
-  },
-  sparkLockStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FEF3C7',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-  },
-  sparkLockStatusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#B45309',
-    flex: 1,
-  },
-  sparkPartnerReadyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#EFF6FF',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  sparkPartnerReadyText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#1D4ED8',
-    flex: 1,
-  },
-  // Modals
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
+  polaroidImg: {
     width: '100%',
-    maxWidth: 420,
+    height: '100%',
   },
-  modalHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalTitle: {
-    fontSize: 17,
+  polaroidTitle: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#131B2E',
   },
-  modalQuestion: {
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  modalTextInput: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-    padding: 12,
-    fontSize: 14,
-    color: '#1F2937',
-    textAlignVertical: 'top',
-    height: 100,
-    marginBottom: 16,
-  },
-  modalSubmitButton: {
-    backgroundColor: '#1F2937',
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  modalSubmitButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  wrappedYearHeading: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1F2937',
-    marginBottom: 6,
-  },
-  wrappedSummaryText: {
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 21,
-    marginBottom: 16,
-  },
-  wrappedStatsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  wrappedStatCard: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-  },
-  wrappedStatNumber: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.primaryBlue,
-  },
-  wrappedStatLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
+  polaroidSubtitle: {
+    fontSize: 11,
+    color: '#5B4041',
+    marginTop: 1,
   },
 });

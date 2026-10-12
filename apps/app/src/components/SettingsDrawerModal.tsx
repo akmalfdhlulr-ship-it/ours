@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@ours/design-tokens';
 import { useAuth } from '@/context/auth-context';
+import { useCoupleData } from '@/context/couple-data-context';
 import { useRouter } from 'expo-router';
 
 interface SettingsDrawerModalProps {
@@ -27,6 +28,15 @@ export const SettingsDrawerModal: React.FC<SettingsDrawerModalProps> = ({
 }) => {
   const router = useRouter();
   const { user, coupleSpace, logout, archiveSpace } = useAuth();
+  const {
+    isNewCoupleMode,
+    setNewCoupleMode,
+    activeRole,
+    setActiveRole,
+    resetToCleanState,
+    loadDemoState,
+    partnerNames,
+  } = useCoupleData();
   const partner = coupleSpace?.members?.find((m) => m.userId !== user?.id);
 
   const [dateReminder, setDateReminder] = useState(true);
@@ -146,6 +156,112 @@ export const SettingsDrawerModal: React.FC<SettingsDrawerModalProps> = ({
                   <Text style={styles.verifiedBadgeText}>Sesi Aman PostgreSQL</Text>
                 </View>
               </View>
+            </View>
+
+            {/* Bagian Khusus: Status Pasangan Baru & Perspektif */}
+            <Text style={styles.sectionHeader}>Mode Pasangan &amp; Pengalaman Berdua</Text>
+            <View style={styles.settingsGroupCard}>
+              <View style={styles.settingItemRow}>
+                <View style={styles.settingItemLeft}>
+                  <Ionicons name="shield-checkmark" size={18} color="#059669" />
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.settingItemTitle}>Integritas Data Bersama (100% Nyata)</Text>
+                    <Text style={styles.settingItemSubtitle}>
+                      Ruang cinta ini bersih dari dummy. Semua kenangan, dompet, dan kuis murni dibangun berdua dari Hari ke-1 🌱
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.itemDivider} />
+
+              {/* Role Perspective Switcher for Testing Mutual Access */}
+              <View style={[styles.settingItemRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+                <View style={styles.settingItemLeft}>
+                  <Ionicons name="swap-horizontal" size={18} color="#2563EB" />
+                  <View>
+                    <Text style={styles.settingItemTitle}>Uji Perspektif Ponsel Pasangan</Text>
+                    <Text style={styles.settingItemSubtitle}>
+                      Lihat bagaimana foto, surat, dan kuis dibaca dari sisi pasangan
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 4 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      backgroundColor: activeRole === 'sasa' ? '#FFE4E6' : '#F1F5F9',
+                      borderWidth: 1.5,
+                      borderColor: activeRole === 'sasa' ? '#E11D48' : 'transparent',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      setActiveRole('sasa');
+                      setStatusMsg('Sekarang aktif sebagai: Sasa (Pasangan)');
+                    }}
+                    activeOpacity={0.8}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: activeRole === 'sasa' ? '700' : '500',
+                        color: activeRole === 'sasa' ? '#BE123C' : '#4B5563',
+                      }}>
+                      🌸 {partnerNames.user} {activeRole === 'sasa' ? '(Aktif)' : ''}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      backgroundColor: activeRole === 'daniel' ? '#E0E7FF' : '#F1F5F9',
+                      borderWidth: 1.5,
+                      borderColor: activeRole === 'daniel' ? '#2563EB' : 'transparent',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      setActiveRole('daniel');
+                      setStatusMsg(`Sekarang aktif sebagai: ${partnerNames.partner}`);
+                    }}
+                    activeOpacity={0.8}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: activeRole === 'daniel' ? '700' : '500',
+                        color: activeRole === 'daniel' ? '#1D4ED8' : '#4B5563',
+                      }}>
+                      ☕ {partnerNames.partner} {activeRole === 'daniel' ? '(Aktif)' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.itemDivider} />
+
+              <TouchableOpacity
+                style={styles.settingItemRowClickable}
+                onPress={() => {
+                  resetToCleanState();
+                  setStatusMsg('Seluruh data di-reset ke Day 1 (Bersih Total)');
+                }}
+                activeOpacity={0.8}>
+                <View style={styles.settingItemLeft}>
+                  <Ionicons name="refresh-outline" size={18} color="#059669" />
+                  <View>
+                    <Text style={[styles.settingItemTitle, { color: '#059669' }]}>
+                      Reset Bersih ke Hari Pertama (Day 1)
+                    </Text>
+                    <Text style={styles.settingItemSubtitle}>
+                      Kosongkan seluruh riwayat untuk memulai petualangan baru bersama
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#059669" />
+              </TouchableOpacity>
             </View>
 
             {/* Bagian 1: Ruang Cinta Pasangan */}

@@ -5,10 +5,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@ours/database';
 import {
+  CategoryShareDto,
   CreateExpenseRequest,
   ExpenseItem,
   ExpenseStatus,
   ExpenseSummaryResponse,
+  ReceiptHistoryItemDto,
   VoidExpenseRequest,
 } from '@ours/contracts';
 
@@ -178,93 +180,73 @@ export class ExpensesService {
       }
     }
 
-    const effectiveTotal = totalActiveAmount > 0 ? totalActiveAmount : 4320000;
-    const catMakan = categoryTotals.MAKAN_MINUM > 0 ? categoryTotals.MAKAN_MINUM : 1814000;
-    const catAktivitas = categoryTotals.AKTIVITAS_HIBURAN > 0 ? categoryTotals.AKTIVITAS_HIBURAN : 1037000;
-    const catTransport = categoryTotals.TRANSPORTASI > 0 ? categoryTotals.TRANSPORTASI : 605000;
-    const catBelanja = categoryTotals.BELANJA_BERSAMA > 0 ? categoryTotals.BELANJA_BERSAMA : 518000;
-    const catLainnya = categoryTotals.LAINNYA > 0 ? categoryTotals.LAINNYA : 346000;
-
-    const categories = [
+    const categories: CategoryShareDto[] = [
       {
         id: 'cat-1',
         key: 'MAKAN_MINUM',
         name: 'Makan & Minum',
-        subtitle: '14 kali kencan • 42%',
-        amount: catMakan,
-        percentage: 42,
+        subtitle: totalActiveAmount > 0 ? `${Math.round((categoryTotals.MAKAN_MINUM / totalActiveAmount) * 100)}% dari total` : '0 transaksi',
+        amount: categoryTotals.MAKAN_MINUM,
+        percentage: totalActiveAmount > 0 ? Math.round((categoryTotals.MAKAN_MINUM / totalActiveAmount) * 100) : 0,
         color: '#E11D48',
       },
       {
         id: 'cat-2',
         key: 'AKTIVITAS_HIBURAN',
         name: 'Aktivitas & Hiburan',
-        subtitle: '6 rencana • 24%',
-        amount: catAktivitas,
-        percentage: 24,
+        subtitle: totalActiveAmount > 0 ? `${Math.round((categoryTotals.AKTIVITAS_HIBURAN / totalActiveAmount) * 100)}% dari total` : '0 transaksi',
+        amount: categoryTotals.AKTIVITAS_HIBURAN,
+        percentage: totalActiveAmount > 0 ? Math.round((categoryTotals.AKTIVITAS_HIBURAN / totalActiveAmount) * 100) : 0,
         color: '#2563EB',
       },
       {
         id: 'cat-3',
         key: 'TRANSPORTASI',
         name: 'Transportasi',
-        subtitle: 'Bensin & Taksi • 14%',
-        amount: catTransport,
-        percentage: 14,
+        subtitle: totalActiveAmount > 0 ? `${Math.round((categoryTotals.TRANSPORTASI / totalActiveAmount) * 100)}% dari total` : '0 transaksi',
+        amount: categoryTotals.TRANSPORTASI,
+        percentage: totalActiveAmount > 0 ? Math.round((categoryTotals.TRANSPORTASI / totalActiveAmount) * 100) : 0,
         color: '#1D4ED8',
       },
       {
         id: 'cat-4',
         key: 'BELANJA_BERSAMA',
         name: 'Belanja Bersama',
-        subtitle: 'Hadiah & Snack • 12%',
-        amount: catBelanja,
-        percentage: 12,
+        subtitle: totalActiveAmount > 0 ? `${Math.round((categoryTotals.BELANJA_BERSAMA / totalActiveAmount) * 100)}% dari total` : '0 transaksi',
+        amount: categoryTotals.BELANJA_BERSAMA,
+        percentage: totalActiveAmount > 0 ? Math.round((categoryTotals.BELANJA_BERSAMA / totalActiveAmount) * 100) : 0,
         color: '#FDA4AF',
       },
       {
         id: 'cat-5',
         key: 'LAINNYA',
         name: 'Lainnya',
-        subtitle: 'Parkir & Tiket • 8%',
-        amount: catLainnya,
-        percentage: 8,
+        subtitle: totalActiveAmount > 0 ? `${Math.round((categoryTotals.LAINNYA / totalActiveAmount) * 100)}% dari total` : '0 transaksi',
+        amount: categoryTotals.LAINNYA,
+        percentage: totalActiveAmount > 0 ? Math.round((categoryTotals.LAINNYA / totalActiveAmount) * 100) : 0,
         color: '#10B981',
       },
     ];
 
-    const recentReceipts = [
-      {
-        id: 'rec-1',
-        placeName: 'Social House Gr...',
-        fullName: 'Social House Grand Indonesia',
-        dateLabel: '12 Apr 2024 • Makan Malam',
-        amount: 286000,
-        payerLabel: 'Daniel bayar',
+    const recentReceipts: ReceiptHistoryItemDto[] = activeExpenses.slice(0, 5).map((exp) => {
+      const payer = exp.paidById === m1?.userId
+        ? (m1?.user?.profile?.displayName || 'Kamu')
+        : (m2?.user?.profile?.displayName || 'Pasangan');
+      const dateStr = exp.expenseDate
+        ? new Date(exp.expenseDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'Hari ini';
+      const desc = exp.description || 'Pengeluaran Kencan';
+      return {
+        id: exp.id,
+        placeName: desc.slice(0, 18) + (desc.length > 18 ? '...' : ''),
+        fullName: desc,
+        dateLabel: `${dateStr}${exp.category ? ` • ${exp.category}` : ''}`,
+        amount: exp.amount,
+        payerLabel: `${payer} bayar`,
         splitLabel: 'Bagi 50:50',
         imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=120&q=80',
-      },
-      {
-        id: 'rec-2',
-        placeName: 'Plataran Menteng',
-        fullName: 'Plataran Menteng Indonesian Fine Dining',
-        dateLabel: '08 Apr 2024 • Dinner Date',
-        amount: 450000,
-        payerLabel: 'Dibagi dua',
-        splitLabel: 'Rp 225.000 /org',
-        imageUrl: 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=120&q=80',
-      },
-      {
-        id: 'rec-3',
-        placeName: 'Ottera Cafe',
-        fullName: 'Ottera Cafe Senopati',
-        dateLabel: '02 Apr 2024 • Kencan Santai',
-        amount: 241500,
-        payerLabel: 'Sasa bayar',
-        splitLabel: 'Bagi 50:50',
-        imageUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=120&q=80',
-      },
-    ];
+      };
+    });
 
     return {
       totalActiveAmount,
@@ -286,13 +268,13 @@ export class ExpensesService {
       balanceOwed,
       debtorUserId,
       creditorUserId,
-      period: 'April 2024',
-      month: 4,
-      year: 2024,
-      totalSpent: effectiveTotal,
-      targetBudget: 5000000,
-      trendPercentage: -12,
-      statusLabel: 'Hemat',
+      period: 'Bulan Ini',
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear(),
+      totalSpent: totalActiveAmount,
+      targetBudget: totalActiveAmount > 0 ? 5000000 : 0,
+      trendPercentage: 0,
+      statusLabel: totalActiveAmount > 0 ? 'Tercatat' : 'Belum Ada Transaksi',
       splitRatio: '50:50',
       activeTab: 'Ringkasan',
       categories,

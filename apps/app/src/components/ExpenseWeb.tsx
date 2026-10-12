@@ -34,88 +34,18 @@ export const ExpenseWeb: React.FC<ExpenseWebProps> = ({
   onNavigateTab,
   customCategories,
   customReceipts,
-  totalSpent = 4320000,
+  totalSpent = 0,
   targetBudget = 5000000,
-  trendPct = -12,
+  trendPct = 0,
 }) => {
   const [activeTab, setActiveTab] = useState<'ringkasan' | 'transaksi'>('ringkasan');
-  const [selectedMonth, setSelectedMonth] = useState('April 2024');
+  const [selectedMonth, setSelectedMonth] = useState('Bulan Ini');
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
 
-  const availableMonths = ['Februari 2024', 'Maret 2024', 'April 2024', 'Mei 2024'];
+  const availableMonths = ['Bulan Ini'];
 
-  const categories: CategoryShareDto[] = customCategories || [
-    {
-      id: '1',
-      key: 'MAKAN_MINUM',
-      name: 'Makan & Minum',
-      subtitle: '14 kali kencan • 42%',
-      amount: 1814000,
-      percentage: 42,
-      color: '#E11D48',
-    },
-    {
-      id: '2',
-      key: 'AKTIVITAS_HIBURAN',
-      name: 'Aktivitas & Hiburan',
-      subtitle: '6 rencana • 24%',
-      amount: 1037000,
-      percentage: 24,
-      color: '#2563EB',
-    },
-    {
-      id: '3',
-      key: 'TRANSPORTASI',
-      name: 'Transportasi',
-      subtitle: 'Bensin & Taksi • 14%',
-      amount: 605000,
-      percentage: 14,
-      color: '#1D4ED8',
-    },
-    {
-      id: '4',
-      key: 'BELANJA_BERSAMA',
-      name: 'Belanja Bersama',
-      subtitle: 'Hadiah & Snack • 12%',
-      amount: 518000,
-      percentage: 12,
-      color: '#FDA4AF',
-    },
-    {
-      id: '5',
-      key: 'LAINNYA',
-      name: 'Lainnya',
-      subtitle: 'Parkir & Tiket • 8%',
-      amount: 346000,
-      percentage: 8,
-      color: '#10B981',
-    },
-  ];
-
-  const recentReceipts: ReceiptHistoryItemDto[] = customReceipts || [
-    {
-      id: 'rec-1',
-      placeName: 'Social House Gr...',
-      fullName: 'Social House Grand Indonesia',
-      dateLabel: '12 Apr 2024 • Makan Malam',
-      amount: 286000,
-      payerLabel: 'Daniel bayar',
-      splitLabel: 'Bagi 50:50',
-      imageUrl:
-        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-      id: 'rec-2',
-      placeName: 'Plataran Menteng',
-      fullName: 'Plataran Menteng Indonesian Fine Dining',
-      dateLabel: '08 Apr 2024 • Dinner Date',
-      amount: 450000,
-      payerLabel: 'Dibagi dua',
-      splitLabel: 'Rp 225.000 /org',
-      imageUrl:
-        'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=160&q=80',
-    },
-  ];
+  const categories: CategoryShareDto[] = customCategories || [];
+  const recentReceipts: ReceiptHistoryItemDto[] = customReceipts || [];
 
   const formatRupiah = (val: number): string => {
     return 'Rp ' + Number(val || 0).toLocaleString('id-ID');

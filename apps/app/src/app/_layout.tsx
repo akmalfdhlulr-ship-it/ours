@@ -3,6 +3,7 @@ import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { AuthProvider } from '@/context/auth-context';
+import { CoupleDataProvider } from '@/context/couple-data-context';
 
 export function ErrorBoundary(props: ErrorBoundaryProps) {
   return (
@@ -54,11 +55,12 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#F8F9F7' },
-          }}>
+        <CoupleDataProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#F8F9F7' },
+            }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)/login" />
           <Stack.Screen name="(auth)/register" />
@@ -73,7 +75,17 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(pairing)/settings" />
           <Stack.Screen name="(pairing)/archived" />
+          <Stack.Screen name="explore/map" />
+          <Stack.Screen name="places/[id]" />
+          <Stack.Screen name="dates/planner" />
+          <Stack.Screen name="receipts/scan" />
+          <Stack.Screen name="receipts/[id]" />
+          <Stack.Screen name="memories/index" />
+          <Stack.Screen name="wishlist/index" />
+          <Stack.Screen name="time-capsule/index" />
+          <Stack.Screen name="quiz/index" />
         </Stack>
+        </CoupleDataProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

@@ -124,4 +124,40 @@ describe('OcrService (Indonesian Receipt Parsing & Engine)', () => {
       service.processReceiptImage({ imageBase64: 'not-valid-base64-content' }),
     ).rejects.toThrow('Format berkas bukan gambar valid');
   });
+
+  describe('Gemini Model Resolution & Lifecycle Invariants', () => {
+    const originalEnv = process.env.GEMINI_MODEL;
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.GEMINI_MODEL = originalEnv;
+      } else {
+        delete process.env.GEMINI_MODEL;
+      }
+    });
+
+    it('should default to active gemini-2.5-flash when GEMINI_MODEL is unset', () => {
+      delete process.env.GEMINI_MODEL;
+      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+    });
+
+    it('should guard against decommissioned gemini-2.0-flash and fallback to gemini-2.5-flash', () => {
+      process.env.GEMINI_MODEL = 'gemini-2.0-flash';
+      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+
+      process.env.GEMINI_MODEL = 'gemini-2.0-flash-001';
+      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+    });
+
+    it('should preserve valid modern Gemini models specified in environment', () => {
+      process.env.GEMINI_MODEL = 'gemini-3.8-flash';
+      expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
+
+      process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+      expect(service.resolveGeminiModel()).toBe('gemini-3.5-flash-lite');
+
+      process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+    });
+  });
 });

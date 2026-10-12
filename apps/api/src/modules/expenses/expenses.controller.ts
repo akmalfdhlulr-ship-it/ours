@@ -11,6 +11,7 @@ import { AuthGuard } from '../../common/guards/auth.guard';
 import { CoupleSpaceGuard } from '../../common/guards/couple-space.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CurrentSpace } from '../../common/decorators/current-space.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import {
   CreateExpenseRequest,
   ExpenseItem,
@@ -31,6 +32,7 @@ export class ExpensesController {
     private readonly ocrService: OcrService,
   ) {}
 
+  @Public()
   @Post('ocr')
   async scanReceipt(
     @Body() body: ScanReceiptRequest,

@@ -82,12 +82,22 @@ export class OcrService {
     }
   }
 
+  resolveGeminiModel(): string {
+    const configured = (process.env.GEMINI_MODEL || '').trim();
+    // gemini-2.0-flash family was decommissioned on June 1, 2026.
+    // Default to active gemini-2.5-flash or allow custom valid model (e.g. gemini-3.8-flash, gemini-3.5-flash-lite).
+    if (!configured || configured.startsWith('gemini-2.0-flash')) {
+      return 'gemini-2.5-flash';
+    }
+    return configured;
+  }
+
   private async processWithGeminiVision(
     imageBuffer: Buffer,
     mimeType: string,
     apiKey: string,
   ): Promise<OcrReceiptResultDto | null> {
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const model = this.resolveGeminiModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     const base64Data = imageBuffer.toString('base64');

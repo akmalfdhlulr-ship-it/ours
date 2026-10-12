@@ -573,10 +573,11 @@ class ApiClient {
     },
 
     scanReceipt: async (dto: ScanReceiptRequest): Promise<OcrReceiptResultDto> => {
-      return this.request<OcrReceiptResultDto>('/expenses/ocr', {
+      const res = await this.request<{ data: OcrReceiptResultDto } | OcrReceiptResultDto>('/expenses/ocr', {
         method: 'POST',
         body: JSON.stringify(dto),
       });
+      return (res as any)?.data || res;
     },
   };
 

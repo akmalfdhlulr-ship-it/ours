@@ -1,0 +1,516 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+import { storage } from '../utils/storage';
+import { useAuth } from './auth-context';
+
+export interface MenuItem {
+  qty: string;
+  name: string;
+  category: string;
+  price: string;
+  priceNumber?: number;
+}
+
+export interface SharedMemory {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  imageUrl: string;
+  locationName: string;
+  author: string;
+  isFavorite?: boolean;
+  audioDuration?: string;
+  audioTitle?: string;
+}
+
+export interface SharedWishlistItem {
+  id: string;
+  title: string;
+  category: 'Liburan' | 'Kuliner' | 'Aktivitas';
+  targetAmount: number;
+  currentSaved: number;
+  priority: 'Tinggi' | 'Sedang' | 'Santai';
+  imageUrl?: string;
+  isCompleted: boolean;
+  location?: string;
+  deadline?: string;
+}
+
+export interface SharedDatePlan {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  venueName: string;
+  location: string;
+  estimatedBudget: number;
+  status: 'upcoming' | 'completed';
+  notes?: string;
+  isMilestone?: boolean;
+  imageUrl?: string;
+}
+
+export interface SharedExpense {
+  id: string;
+  merchantName: string;
+  amount: number;
+  date: string;
+  category: string;
+  splitMode: '50-50' | 'partner' | 'user' | string;
+  memoryNote?: string;
+  items?: MenuItem[];
+  accuracy?: number;
+}
+
+export interface SharedLetter {
+  id: string;
+  title: string;
+  sender: string;
+  recipient: string;
+  sealedDate: string;
+  unlockDate: string;
+  fullText: string;
+  wordCount: number;
+  preview: string;
+  mood: string;
+  moodIcon: string;
+  isUnlocked: boolean;
+  secretTeaser: string;
+}
+
+export interface SharedQuizState {
+  questionNumber: number;
+  questionText: string;
+  category: string;
+  streakDays: number;
+  danielAnswer: string | null;
+  sasaAnswer: string | null;
+  isRevealed: boolean;
+  quickPickRound1: { userChoice: string; agreed: boolean };
+  quickPickRound2: { danielChoice: string | null; sasaChoice: string | null };
+}
+
+export interface CoupleDataContextValue {
+  isNewCoupleMode: boolean;
+  setNewCoupleMode: (val: boolean) => void;
+  daysTogether: number;
+  partnerNames: { user: string; partner: string };
+  totalBudget: number;
+  setTotalBudget: (val: number) => void;
+
+  activeRole: 'sasa' | 'daniel';
+  setActiveRole: (role: 'sasa' | 'daniel') => void;
+
+  // Memories
+  memories: SharedMemory[];
+  addMemory: (memory: Omit<SharedMemory, 'id'>) => void;
+  deleteMemory: (id: string) => void;
+
+  // Wishlist
+  wishlist: SharedWishlistItem[];
+  addWishlistItem: (item: Omit<SharedWishlistItem, 'id' | 'currentSaved' | 'isCompleted'>) => void;
+  addWishlistSavings: (id: string, amount: number) => void;
+
+  // Dates
+  dates: SharedDatePlan[];
+  addDatePlan: (plan: Omit<SharedDatePlan, 'id'>) => void;
+
+  // Expenses & Wallet
+  expenses: SharedExpense[];
+  addExpense: (expense: Omit<SharedExpense, 'id'>) => void;
+
+  // Letters / Time Capsule
+  letters: SharedLetter[];
+  activeCapsule: SharedLetter | null;
+  addLetter: (letter: Omit<SharedLetter, 'id' | 'isUnlocked'>, isDirect?: boolean) => void;
+  addLoveNote: (note: { title: string; content: string; sender: string; recipient: string }) => void;
+  unlockLetter: (id: string) => void;
+
+  // Love Quiz
+  quizState: SharedQuizState;
+  submitDanielAnswer: (answer: string) => void;
+  submitSasaAnswer: (answer: string) => void;
+  submitQuickPick: (choice: string) => void;
+
+  // Reciprocal Heartbeat / Detak Rasa
+  lastPulseSentAt: number | null;
+  lastPulseSender: string | null;
+  sendHeartbeat: (sender: string) => void;
+
+  // Reset & Helpers
+  resetToCleanState: () => void;
+  loadDemoState: () => void;
+}
+
+const CoupleDataContext = createContext<CoupleDataContextValue | null>(null);
+
+const STORAGE_KEY_MODE = 'ours_couple_mode_clean';
+const STORAGE_KEY_MEMORIES = 'ours_shared_memories';
+const STORAGE_KEY_WISHLIST = 'ours_shared_wishlist';
+const STORAGE_KEY_DATES = 'ours_shared_dates';
+const STORAGE_KEY_EXPENSES = 'ours_shared_expenses';
+const STORAGE_KEY_LETTERS = 'ours_shared_letters';
+const STORAGE_KEY_CAPSULE = 'ours_shared_active_capsule';
+const STORAGE_KEY_QUIZ = 'ours_shared_quiz';
+const STORAGE_KEY_BUDGET = 'ours_shared_budget';
+
+export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, coupleSpace } = useAuth();
+
+  // Mode: Production always runs in 100% clean real mode (no fake/dummy data)
+  const [isNewCoupleMode, setIsNewCoupleModeState] = useState<boolean>(true);
+  const [totalBudget, setTotalBudgetState] = useState<number>(5000000);
+  const [activeRole, setActiveRole] = useState<'sasa' | 'daniel'>('sasa');
+
+  // Genuine user-created data states (starts empty, built together by couple)
+  const [memories, setMemories] = useState<SharedMemory[]>([]);
+  const [wishlist, setWishlist] = useState<SharedWishlistItem[]>([]);
+  const [dates, setDates] = useState<SharedDatePlan[]>([]);
+  const [expenses, setExpenses] = useState<SharedExpense[]>([]);
+  const [letters, setLetters] = useState<SharedLetter[]>([]);
+  const [activeCapsule, setActiveCapsule] = useState<SharedLetter | null>(null);
+
+  const [quizState, setQuizState] = useState<SharedQuizState>({
+    questionNumber: 1,
+    questionText: 'Apa momen kencan kita yang paling bikin kamu ketawa lepas sampai sakit perut?',
+    category: 'Nostalgia Manis',
+    streakDays: 1,
+    danielAnswer: null,
+    sasaAnswer: null,
+    isRevealed: false,
+    quickPickRound1: { userChoice: 'Gunung', agreed: true },
+    quickPickRound2: { danielChoice: null, sasaChoice: null },
+  });
+
+  const [lastPulseSentAt, setLastPulseSentAt] = useState<number | null>(null);
+  const [lastPulseSender, setLastPulseSender] = useState<string | null>(null);
+
+  // Genuine calculation for Days Together strictly from real couple space dates
+  const calculateDaysTogether = useCallback((): number => {
+    if (coupleSpace?.anniversaryDate) {
+      const anniv = new Date(coupleSpace.anniversaryDate);
+      const now = new Date();
+      const diffMs = now.getTime() - anniv.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      return Math.max(1, diffDays);
+    }
+    if (coupleSpace?.createdAt) {
+      const created = new Date(coupleSpace.createdAt);
+      const now = new Date();
+      const diffMs = now.getTime() - created.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      return Math.max(1, diffDays + 1);
+    }
+    return 1; // Real Day 1 for new couples!
+  }, [coupleSpace]);
+
+  // Load genuine state from local storage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        setIsNewCoupleModeState(true);
+
+        const storedBudget = await storage.getItem(STORAGE_KEY_BUDGET);
+        if (storedBudget) setTotalBudgetState(parseInt(storedBudget, 10));
+
+        // Read real user items
+        const savedMem = await storage.getItem(STORAGE_KEY_MEMORIES);
+        setMemories(savedMem ? JSON.parse(savedMem) : []);
+
+        const savedWish = await storage.getItem(STORAGE_KEY_WISHLIST);
+        setWishlist(savedWish ? JSON.parse(savedWish) : []);
+
+        const savedDates = await storage.getItem(STORAGE_KEY_DATES);
+        setDates(savedDates ? JSON.parse(savedDates) : []);
+
+        const savedExp = await storage.getItem(STORAGE_KEY_EXPENSES);
+        setExpenses(savedExp ? JSON.parse(savedExp) : []);
+
+        const savedLetters = await storage.getItem(STORAGE_KEY_LETTERS);
+        setLetters(savedLetters ? JSON.parse(savedLetters) : []);
+
+        const savedCapsule = await storage.getItem(STORAGE_KEY_CAPSULE);
+        setActiveCapsule(savedCapsule ? JSON.parse(savedCapsule) : null);
+
+        const savedQuiz = await storage.getItem(STORAGE_KEY_QUIZ);
+        if (savedQuiz) setQuizState(JSON.parse(savedQuiz));
+      } catch (err) {
+        console.warn('Error loading couple data storage:', err);
+      }
+    })();
+  }, []);
+
+  const setNewCoupleMode = async (val: boolean) => {
+    // Mode is always clean real data in production
+    setIsNewCoupleModeState(true);
+  };
+
+  const setTotalBudget = async (val: number) => {
+    setTotalBudgetState(val);
+    await storage.setItem(STORAGE_KEY_BUDGET, val.toString());
+  };
+
+  // Memories
+  const addMemory = async (item: Omit<SharedMemory, 'id'>) => {
+    const newMemory: SharedMemory = {
+      ...item,
+      id: `mem-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+    };
+    const updated = [newMemory, ...memories];
+    setMemories(updated);
+    await storage.setItem(STORAGE_KEY_MEMORIES, JSON.stringify(updated));
+  };
+
+  const deleteMemory = async (id: string) => {
+    const updated = memories.filter((m) => m.id !== id);
+    setMemories(updated);
+    await storage.setItem(STORAGE_KEY_MEMORIES, JSON.stringify(updated));
+  };
+
+  // Wishlist
+  const addWishlistItem = async (
+    item: Omit<SharedWishlistItem, 'id' | 'currentSaved' | 'isCompleted'>
+  ) => {
+    const newItem: SharedWishlistItem = {
+      ...item,
+      id: `wish-${Date.now()}`,
+      currentSaved: 0,
+      isCompleted: false,
+    };
+    const updated = [newItem, ...wishlist];
+    setWishlist(updated);
+    await storage.setItem(STORAGE_KEY_WISHLIST, JSON.stringify(updated));
+  };
+
+  const addWishlistSavings = async (id: string, amount: number) => {
+    const updated = wishlist.map((w) => {
+      if (w.id === id) {
+        const nextSaved = w.currentSaved + amount;
+        return {
+          ...w,
+          currentSaved: nextSaved,
+          isCompleted: nextSaved >= w.targetAmount,
+        };
+      }
+      return w;
+    });
+    setWishlist(updated);
+    await storage.setItem(STORAGE_KEY_WISHLIST, JSON.stringify(updated));
+  };
+
+  // Dates
+  const addDatePlan = async (plan: Omit<SharedDatePlan, 'id'>) => {
+    const newDate: SharedDatePlan = {
+      ...plan,
+      id: `date-${Date.now()}`,
+    };
+    const updated = [newDate, ...dates];
+    setDates(updated);
+    await storage.setItem(STORAGE_KEY_DATES, JSON.stringify(updated));
+  };
+
+  // Expenses & Wallet
+  const addExpense = async (expense: Omit<SharedExpense, 'id'>) => {
+    const newExp: SharedExpense = {
+      ...expense,
+      id: `exp-${Date.now()}`,
+    };
+    const updated = [newExp, ...expenses];
+    setExpenses(updated);
+    await storage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(updated));
+  };
+
+  // Letters & Time Capsule
+  const addLetter = async (
+    letter: Omit<SharedLetter, 'id' | 'isUnlocked'>,
+    isDirect?: boolean,
+  ) => {
+    if (isDirect) {
+      const directLetter: SharedLetter = {
+        ...letter,
+        id: `letter-${Date.now()}`,
+        isUnlocked: true,
+      };
+      const updated = [directLetter, ...letters];
+      setLetters(updated);
+      await storage.setItem(STORAGE_KEY_LETTERS, JSON.stringify(updated));
+    } else {
+      const newLetter: SharedLetter = {
+        ...letter,
+        id: `letter-${Date.now()}`,
+        isUnlocked: false,
+      };
+      setActiveCapsule(newLetter);
+      await storage.setItem(STORAGE_KEY_CAPSULE, JSON.stringify(newLetter));
+    }
+  };
+
+  const addLoveNote = async (note: {
+    title: string;
+    content: string;
+    sender: string;
+    recipient: string;
+  }) => {
+    const newNote: SharedLetter = {
+      id: `note-${Date.now()}`,
+      title: note.title,
+      sender: note.sender,
+      recipient: note.recipient,
+      sealedDate: 'Hari Ini',
+      unlockDate: 'Hari Ini',
+      fullText: note.content,
+      wordCount: note.content.split(/\s+/).length,
+      preview: note.content.slice(0, 80) + '...',
+      mood: 'Penuh Kasih',
+      moodIcon: 'heart',
+      isUnlocked: true,
+      secretTeaser: 'Memo manis yang langsung bisa dibaca berdua 💕',
+    };
+    const updated = [newNote, ...letters];
+    setLetters(updated);
+    await storage.setItem(STORAGE_KEY_LETTERS, JSON.stringify(updated));
+  };
+
+  const unlockLetter = async (id: string) => {
+    if (activeCapsule && activeCapsule.id === id) {
+      const unlocked = { ...activeCapsule, isUnlocked: true };
+      setActiveCapsule(null);
+      await storage.removeItem(STORAGE_KEY_CAPSULE);
+      const updatedList = [unlocked, ...letters];
+      setLetters(updatedList);
+      await storage.setItem(STORAGE_KEY_LETTERS, JSON.stringify(updatedList));
+    }
+  };
+
+  // Love Quiz
+  const submitDanielAnswer = async (answer: string) => {
+    const nextQuiz: SharedQuizState = {
+      ...quizState,
+      danielAnswer: answer,
+      isRevealed: !!quizState.sasaAnswer,
+    };
+    setQuizState(nextQuiz);
+    await storage.setItem(STORAGE_KEY_QUIZ, JSON.stringify(nextQuiz));
+  };
+
+  const submitSasaAnswer = async (answer: string) => {
+    const nextQuiz: SharedQuizState = {
+      ...quizState,
+      sasaAnswer: answer,
+      isRevealed: !!quizState.danielAnswer,
+    };
+    setQuizState(nextQuiz);
+    await storage.setItem(STORAGE_KEY_QUIZ, JSON.stringify(nextQuiz));
+  };
+
+  const submitQuickPick = async (choice: string) => {
+    const nextQuiz: SharedQuizState = {
+      ...quizState,
+      quickPickRound2: {
+        ...quizState.quickPickRound2,
+        sasaChoice: choice,
+      },
+    };
+    setQuizState(nextQuiz);
+    await storage.setItem(STORAGE_KEY_QUIZ, JSON.stringify(nextQuiz));
+  };
+
+  // Reciprocal Heartbeat
+  const sendHeartbeat = (sender: string) => {
+    setLastPulseSentAt(Date.now());
+    setLastPulseSender(sender);
+  };
+
+  // Reset to Pristine Clean
+  const resetToCleanState = async () => {
+    setIsNewCoupleModeState(true);
+    await storage.setItem(STORAGE_KEY_MODE, 'true');
+    setMemories([]);
+    setWishlist([]);
+    setDates([]);
+    setExpenses([]);
+    setLetters([]);
+    setActiveCapsule(null);
+    await storage.removeItem(STORAGE_KEY_MEMORIES);
+    await storage.removeItem(STORAGE_KEY_WISHLIST);
+    await storage.removeItem(STORAGE_KEY_DATES);
+    await storage.removeItem(STORAGE_KEY_EXPENSES);
+    await storage.removeItem(STORAGE_KEY_LETTERS);
+    await storage.removeItem(STORAGE_KEY_CAPSULE);
+  };
+
+  const loadDemoState = async () => {
+    // Zero dummy data: demo mode is permanently replaced by clean genuine state
+    await resetToCleanState();
+  };
+
+  const partnerMember = coupleSpace?.members?.find((m) => m.userId !== user?.id);
+  const myRealName =
+    (user as any)?.profile?.displayName ||
+    (user as any)?.displayName ||
+    user?.email?.split('@')[0] ||
+    (activeRole === 'sasa' ? 'Sasa' : 'Daniel');
+  const partnerRealName =
+    partnerMember?.displayName ||
+    (coupleSpace?.status === 'ACTIVE' ? 'Pasangan' : 'Menunggu Pasangan');
+
+  const partnerNames = {
+    user: myRealName,
+    partner: partnerRealName,
+  };
+
+  return (
+    <CoupleDataContext.Provider
+      value={{
+        isNewCoupleMode,
+        setNewCoupleMode,
+        daysTogether: calculateDaysTogether(),
+        partnerNames,
+        totalBudget,
+        setTotalBudget,
+        activeRole,
+        setActiveRole,
+        memories,
+        addMemory,
+        deleteMemory,
+        wishlist,
+        addWishlistItem,
+        addWishlistSavings,
+        dates,
+        addDatePlan,
+        expenses,
+        addExpense,
+        letters,
+        activeCapsule,
+        addLetter,
+        addLoveNote,
+        unlockLetter,
+        quizState,
+        submitDanielAnswer,
+        submitSasaAnswer,
+        submitQuickPick,
+        lastPulseSentAt,
+        lastPulseSender,
+        sendHeartbeat,
+        resetToCleanState,
+        loadDemoState,
+      }}
+    >
+      {children}
+    </CoupleDataContext.Provider>
+  );
+};
+
+export const useCoupleData = (): CoupleDataContextValue => {
+  const context = useContext(CoupleDataContext);
+  if (!context) {
+    throw new Error('useCoupleData must be used within a CoupleDataProvider');
+  }
+  return context;
+};

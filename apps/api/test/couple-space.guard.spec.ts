@@ -18,8 +18,16 @@ describe('CoupleSpaceGuard', () => {
     guard = new CoupleSpaceGuard(prismaMock, reflector);
   });
 
-  const createMockContext = (requestData: any, allowPending = false): ExecutionContext => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(allowPending);
+  const createMockContext = (
+    requestData: any,
+    allowPending = false,
+    isPublic = false,
+  ): ExecutionContext => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: any) => {
+      if (key === ALLOW_PENDING_SPACE_KEY) return allowPending;
+      if (key === 'isPublic') return isPublic;
+      return false;
+    });
 
     return {
       switchToHttp: () => ({

@@ -50,88 +50,65 @@ export const ExpenseScreen: React.FC<ExpenseScreenProps> = ({
   onSelectPeriod,
   customCategories,
   customReceipts,
-  totalSpent = 4320000,
-  targetBudget = 5000000,
-  trendPct = -12,
+  totalSpent = 0,
+  targetBudget = 0,
+  trendPct = 0,
 }) => {
   const [activeTab, setActiveTab] = useState<'ringkasan' | 'transaksi'>('ringkasan');
-  const [selectedMonth, setSelectedMonth] = useState('April 2024');
+  const [selectedMonth, setSelectedMonth] = useState('Bulan Ini');
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
 
-  const availableMonths = ['Februari 2024', 'Maret 2024', 'April 2024', 'Mei 2024'];
+  const availableMonths = ['Bulan Ini', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'];
 
   const categories: CategoryShareDto[] = customCategories || [
     {
       id: '1',
       key: 'MAKAN_MINUM',
       name: 'Makan & Minum',
-      subtitle: '14 kali kencan • 42%',
-      amount: 1814000,
-      percentage: 42,
+      subtitle: '0 transaksi',
+      amount: 0,
+      percentage: 0,
       color: '#E11D48',
     },
     {
       id: '2',
       key: 'AKTIVITAS_HIBURAN',
       name: 'Aktivitas & Hiburan',
-      subtitle: '6 rencana • 24%',
-      amount: 1037000,
-      percentage: 24,
+      subtitle: '0 rencana',
+      amount: 0,
+      percentage: 0,
       color: '#2563EB',
     },
     {
       id: '3',
       key: 'TRANSPORTASI',
       name: 'Transportasi',
-      subtitle: 'Bensin & Taksi • 14%',
-      amount: 605000,
-      percentage: 14,
+      subtitle: '0 transaksi',
+      amount: 0,
+      percentage: 0,
       color: '#1D4ED8',
     },
     {
       id: '4',
       key: 'BELANJA_BERSAMA',
       name: 'Belanja Bersama',
-      subtitle: 'Hadiah & Snack • 12%',
-      amount: 518000,
-      percentage: 12,
+      subtitle: '0 transaksi',
+      amount: 0,
+      percentage: 0,
       color: '#FDA4AF',
     },
     {
       id: '5',
       key: 'LAINNYA',
       name: 'Lainnya',
-      subtitle: 'Parkir & Tiket • 8%',
-      amount: 346000,
-      percentage: 8,
+      subtitle: '0 transaksi',
+      amount: 0,
+      percentage: 0,
       color: '#10B981',
     },
   ];
 
-  const recentReceipts: ReceiptHistoryItemDto[] = customReceipts || [
-    {
-      id: 'rec-1',
-      placeName: 'Social House Gr...',
-      fullName: 'Social House Grand Indonesia',
-      dateLabel: '12 Apr 2024 • Makan Malam',
-      amount: 286000,
-      payerLabel: 'Daniel bayar',
-      splitLabel: 'Bagi 50:50',
-      imageUrl:
-        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=160&q=80',
-    },
-    {
-      id: 'rec-2',
-      placeName: 'Plataran Menteng',
-      fullName: 'Plataran Menteng Indonesian Fine Dining',
-      dateLabel: '08 Apr 2024 • Dinner Date',
-      amount: 450000,
-      payerLabel: 'Dibagi dua',
-      splitLabel: 'Rp 225.000 /org',
-      imageUrl:
-        'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=160&q=80',
-    },
-  ];
+  const recentReceipts: ReceiptHistoryItemDto[] = customReceipts || [];
 
   const formatRupiah = (val: number): string => {
     return 'Rp ' + Number(val || 0).toLocaleString('id-ID');
@@ -332,11 +309,11 @@ export const ExpenseScreen: React.FC<ExpenseScreenProps> = ({
 
                   {/* Center Content in Donut Ring */}
                   <View style={styles.donutHoleContent}>
-                    <View style={styles.donutIconCircle}>
-                      <Utensils size={15} color="#E11D48" />
+                    <View style={[styles.donutIconCircle, totalSpent === 0 && { backgroundColor: '#F1F5F9' }]}>
+                      <Wallet size={15} color={totalSpent === 0 ? '#64748B' : '#E11D48'} />
                     </View>
-                    <Text style={styles.donutPercentageText}>42%</Text>
-                    <Text style={styles.donutSubText}>Makan & Minum</Text>
+                    <Text style={styles.donutPercentageText}>{totalSpent === 0 ? '0%' : '100%'}</Text>
+                    <Text style={styles.donutSubText}>{totalSpent === 0 ? 'Belum Ada Transaksi' : 'Pengeluaran Aktif'}</Text>
                   </View>
                 </View>
               </View>
@@ -375,32 +352,44 @@ export const ExpenseScreen: React.FC<ExpenseScreenProps> = ({
 
               {/* Recent Receipts List */}
               <View style={styles.receiptsList}>
-                {recentReceipts.map((rec, idx) => (
-                  <View
-                    key={rec.id}
-                    style={[
-                      styles.receiptRow,
-                      idx < recentReceipts.length - 1 && styles.receiptRowBorder,
-                    ]}>
-                    <View style={styles.receiptLeft}>
-                      <Image
-                        source={{ uri: rec.imageUrl }}
-                        style={styles.receiptThumb}
-                        resizeMode="cover"
-                      />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.receiptPlaceText} numberOfLines={1}>
-                          {rec.placeName}
-                        </Text>
-                        <Text style={styles.receiptDateText}>{rec.dateLabel}</Text>
+                {recentReceipts.length === 0 ? (
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 24, marginBottom: 6 }}>🧾</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#1F2937' }}>
+                      Belum Ada Struk Tercatat
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', marginTop: 4 }}>
+                      Mulai catat atau pindai struk kencan pertama kalian berdua.
+                    </Text>
+                  </View>
+                ) : (
+                  recentReceipts.map((rec, idx) => (
+                    <View
+                      key={rec.id}
+                      style={[
+                        styles.receiptRow,
+                        idx < recentReceipts.length - 1 && styles.receiptRowBorder,
+                      ]}>
+                      <View style={styles.receiptLeft}>
+                        <Image
+                          source={{ uri: rec.imageUrl }}
+                          style={styles.receiptThumb}
+                          resizeMode="cover"
+                        />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={styles.receiptPlaceText} numberOfLines={1}>
+                            {rec.placeName}
+                          </Text>
+                          <Text style={styles.receiptDateText}>{rec.dateLabel}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.receiptRight}>
+                        <Text style={styles.receiptAmountText}>{formatRupiah(rec.amount)}</Text>
+                        <Text style={styles.receiptPayerText}>{rec.payerLabel}</Text>
                       </View>
                     </View>
-                    <View style={styles.receiptRight}>
-                      <Text style={styles.receiptAmountText}>{formatRupiah(rec.amount)}</Text>
-                      <Text style={styles.receiptPayerText}>{rec.payerLabel}</Text>
-                    </View>
-                  </View>
-                ))}
+                  ))
+                )}
               </View>
             </View>
           </>
@@ -410,30 +399,42 @@ export const ExpenseScreen: React.FC<ExpenseScreenProps> = ({
             <View style={styles.transHeaderCard}>
               <Text style={styles.transHeaderTitle}>Riwayat Transaksi Lengkap</Text>
               <Text style={styles.transHeaderSub}>
-                Semua pengeluaran yang dicatat oleh Daniel & Sasa
+                Semua pengeluaran yang dicatat di ruang kencan kalian
               </Text>
             </View>
 
-            {recentReceipts.map((rec) => (
-              <View key={rec.id} style={styles.transItemCard}>
-                <Image
-                  source={{ uri: rec.imageUrl }}
-                  style={styles.transThumb}
-                  resizeMode="cover"
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.transPlaceName}>{rec.fullName || rec.placeName}</Text>
-                  <Text style={styles.transDateLabel}>{rec.dateLabel}</Text>
-                  <View style={styles.transPayerPill}>
-                    <Text style={styles.transPayerPillText}>{rec.payerLabel}</Text>
+            {recentReceipts.length === 0 ? (
+              <View style={{ padding: 32, alignItems: 'center' }}>
+                <Text style={{ fontSize: 32, marginBottom: 8 }}>💳</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#1F2937' }}>
+                  Belum Ada Riwayat Transaksi
+                </Text>
+                <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', marginTop: 4 }}>
+                  Catat pengeluaran atau pindai struk untuk melihat pembagian pengeluaran bersama.
+                </Text>
+              </View>
+            ) : (
+              recentReceipts.map((rec) => (
+                <View key={rec.id} style={styles.transItemCard}>
+                  <Image
+                    source={{ uri: rec.imageUrl }}
+                    style={styles.transThumb}
+                    resizeMode="cover"
+                  />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.transPlaceName}>{rec.fullName || rec.placeName}</Text>
+                    <Text style={styles.transDateLabel}>{rec.dateLabel}</Text>
+                    <View style={styles.transPayerPill}>
+                      <Text style={styles.transPayerPillText}>{rec.payerLabel}</Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.transAmountText}>{formatRupiah(rec.amount)}</Text>
+                    <Text style={styles.transSplitText}>{rec.splitLabel || 'Bagi 50:50'}</Text>
                   </View>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.transAmountText}>{formatRupiah(rec.amount)}</Text>
-                  <Text style={styles.transSplitText}>{rec.splitLabel || 'Bagi 50:50'}</Text>
-                </View>
-              </View>
-            ))}
+              ))
+            )}
           </View>
         )}
 
