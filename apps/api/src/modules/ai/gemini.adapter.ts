@@ -9,23 +9,54 @@ import {
 @Injectable()
 export class GeminiAdapter implements AiPort {
   private readonly logger = new Logger(GeminiAdapter.name);
-  private readonly apiKey = process.env.GEMINI_API_KEY || '';
-  private readonly modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+
+  private getApiKey(): string {
+    const raw = (process.env.GEMINI_API_KEY || '').trim();
+    return raw.replace(/^["']|["']$/g, '').trim();
+  }
+
+  resolveModelName(): string {
+    let configured = (process.env.GEMINI_MODEL || '').trim();
+    configured = configured.replace(/^["']|["']$/g, '').trim();
+    configured = configured.replace(/^models\//, '').trim();
+
+    // Guard against decommissioned models (gemini-2.0-flash shutdown on June 1, 2026)
+    if (configured.startsWith('gemini-2.0-flash')) {
+      return 'gemini-3.8-flash';
+    }
+
+    if (!configured) {
+      return 'gemini-3.8-flash';
+    }
+
+    return configured;
+  }
 
   private async callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
-    if (!this.apiKey) {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
       throw new Error('GEMINI_API_KEY environment variable is not configured');
     }
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent`;
+    const modelName = this.resolveModelName();
+    return this.callGeminiWithModel(systemPrompt, userPrompt, apiKey, modelName);
+  }
+
+  private async callGeminiWithModel(
+    systemPrompt: string,
+    userPrompt: string,
+    apiKey: string,
+    modelName: string,
+  ): Promise<string> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': this.apiKey,
+          'x-goog-api-key': apiKey,
         },
         signal: controller.signal,
         body: JSON.stringify({
@@ -45,7 +76,13 @@ export class GeminiAdapter implements AiPort {
 
       if (!response.ok) {
         const errorText = await response.text();
-        const safeError = this.apiKey ? errorText.replace(new RegExp(this.apiKey, 'g'), '[REDACTED]') : errorText;
+        const safeError = apiKey ? errorText.replace(new RegExp(apiKey, 'g'), '[REDACTED]') : errorText;
+
+        if (response.status === 404 && modelName !== 'gemini-3.8-flash') {
+          this.logger.warn(`Model ${modelName} returned HTTP 404. Fallback to active gemini-3.8-flash...`);
+          return this.callGeminiWithModel(systemPrompt, userPrompt, apiKey, 'gemini-3.8-flash');
+        }
+
         throw new Error(`Gemini HTTP ${response.status}: ${safeError}`);
       }
 
@@ -59,7 +96,7 @@ export class GeminiAdapter implements AiPort {
     } catch (err: any) {
       clearTimeout(timeout);
       const rawMsg = err?.message || 'Unknown error';
-      const safeMsg = this.apiKey ? rawMsg.replace(new RegExp(this.apiKey, 'g'), '[REDACTED]') : rawMsg;
+      const safeMsg = apiKey ? rawMsg.replace(new RegExp(apiKey, 'g'), '[REDACTED]') : rawMsg;
       this.logger.warn(`Gemini API call failed (${safeMsg}). Using deterministic fallback.`);
       throw new Error(`Gemini call error: ${safeMsg}`);
     }

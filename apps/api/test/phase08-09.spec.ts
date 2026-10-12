@@ -362,5 +362,35 @@ describe('OURS — Phase 08 & Phase 09 Invariant Verification', () => {
       expect(plan.stops).toHaveLength(1);
       expect(plan.checklist).toContain('Warm jacket');
     });
+
+    it('resolves model correctly in GeminiAdapter, guarding against decommissioned models', () => {
+      const { GeminiAdapter } = require('../src/modules/ai/gemini.adapter');
+      const adapter = new GeminiAdapter();
+
+      const origEnv = process.env.GEMINI_MODEL;
+      try {
+        delete process.env.GEMINI_MODEL;
+        expect(adapter.resolveModelName()).toBe('gemini-3.8-flash');
+
+        process.env.GEMINI_MODEL = 'gemini-2.0-flash';
+        expect(adapter.resolveModelName()).toBe('gemini-3.8-flash');
+
+        process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+        expect(adapter.resolveModelName()).toBe('gemini-2.5-flash');
+
+        process.env.GEMINI_MODEL = '"gemini-3.8-flash"';
+        expect(adapter.resolveModelName()).toBe('gemini-3.8-flash');
+
+        process.env.GEMINI_MODEL = 'models/gemini-3.8-flash';
+        expect(adapter.resolveModelName()).toBe('gemini-3.8-flash');
+      } finally {
+        if (origEnv !== undefined) {
+          process.env.GEMINI_MODEL = origEnv;
+        } else {
+          delete process.env.GEMINI_MODEL;
+        }
+      }
+    });
   });
 });
+

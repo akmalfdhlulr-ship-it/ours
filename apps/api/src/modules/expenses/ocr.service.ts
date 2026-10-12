@@ -49,7 +49,8 @@ export class OcrService {
     const mimeType = isPng ? 'image/png' : isWebp ? 'image/webp' : 'image/jpeg';
 
     // 1. Prioritize Gemini Multimodal AI Vision (Best accuracy for faded thermal receipts)
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const rawApiKey = (process.env.GEMINI_API_KEY || '').trim();
+    const geminiApiKey = rawApiKey.replace(/^["']|["']$/g, '').trim();
     if (geminiApiKey) {
       try {
         this.logger.log(`Memulai ekstraksi OCR via Gemini Vision AI (${imageBuffer.length} bytes)...`);
@@ -59,7 +60,8 @@ export class OcrService {
           return geminiResult;
         }
       } catch (geminiErr: any) {
-        this.logger.warn(`Gemini Vision OCR menemui kendala, beralih ke Tesseract: ${geminiErr.message}`);
+        const safeErr = geminiApiKey ? geminiErr.message.replace(new RegExp(geminiApiKey, 'g'), '[REDACTED]') : geminiErr.message;
+        this.logger.warn(`Gemini Vision OCR menemui kendala, beralih ke Tesseract: ${safeErr}`);
       }
     }
 
@@ -83,12 +85,23 @@ export class OcrService {
   }
 
   resolveGeminiModel(): string {
-    const configured = (process.env.GEMINI_MODEL || '').trim();
+    let configured = (process.env.GEMINI_MODEL || '').trim();
+    // Strip surrounding quotes if present (e.g. from .env file: "gemini-3.8-flash" -> gemini-3.8-flash)
+    configured = configured.replace(/^["']|["']$/g, '').trim();
+    // Strip leading "models/" prefix if present
+    configured = configured.replace(/^models\//, '').trim();
+
     // gemini-2.0-flash family was decommissioned on June 1, 2026.
-    // Default to active gemini-2.5-flash or allow custom valid model (e.g. gemini-3.8-flash, gemini-3.5-flash-lite).
-    if (!configured || configured.startsWith('gemini-2.0-flash')) {
-      return 'gemini-2.5-flash';
+    // Guard against decommissioned models by falling back to active gemini-3.8-flash.
+    if (configured.startsWith('gemini-2.0-flash')) {
+      return 'gemini-3.8-flash';
     }
+
+    // Default to active verified model for this project if not specified
+    if (!configured) {
+      return 'gemini-3.8-flash';
+    }
+
     return configured;
   }
 
@@ -98,6 +111,15 @@ export class OcrService {
     apiKey: string,
   ): Promise<OcrReceiptResultDto | null> {
     const model = this.resolveGeminiModel();
+    return this.callGeminiVisionModel(imageBuffer, mimeType, apiKey, model);
+  }
+
+  private async callGeminiVisionModel(
+    imageBuffer: Buffer,
+    mimeType: string,
+    apiKey: string,
+    model: string,
+  ): Promise<OcrReceiptResultDto | null> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     const base64Data = imageBuffer.toString('base64');
@@ -166,7 +188,16 @@ Strict requirements:
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Gemini Vision HTTP ${response.status}: ${errText.slice(0, 150)}`);
+        const safeErr = apiKey ? errText.replace(new RegExp(apiKey, 'g'), '[REDACTED]') : errText;
+
+        // If the configured model returned 404 (e.g. legacy model access restricted to existing users)
+        // and was not already gemini-3.8-flash, try the active production model gemini-3.8-flash once before fallback to Tesseract.
+        if (response.status === 404 && model !== 'gemini-3.8-flash') {
+          this.logger.warn(`Model ${model} tidak dapat diakses (HTTP 404). Mencoba fallback ke gemini-3.8-flash...`);
+          return this.callGeminiVisionModel(imageBuffer, mimeType, apiKey, 'gemini-3.8-flash');
+        }
+
+        throw new Error(`Gemini Vision HTTP ${response.status}: ${safeErr.slice(0, 150)}`);
       }
 
       const resData: any = await response.json();
@@ -216,9 +247,10 @@ Strict requirements:
         currency: 'IDR',
         isArithmeticConsistent: true,
       };
-    } catch (err) {
+    } catch (err: any) {
       clearTimeout(timeout);
-      throw err;
+      const safeErr = apiKey ? (err?.message || '').replace(new RegExp(apiKey, 'g'), '[REDACTED]') : (err?.message || '');
+      throw new Error(safeErr || 'Gemini Vision call failed');
     }
   }
 

@@ -22,6 +22,7 @@ ours/
 │   └── config/                 # Shared TSConfig and ESLint configs
 ├── infrastructure/             # Docker Compose (PostgreSQL 16, Redis 7)
 ├── docs/                       # Official architecture, domain, and design specifications
+├── SYSTEM_DOCUMENTATION.md    # Complete system architecture, workflows & operational guide
 └── AGENTS.md                   # Workspace engineering invariants
 ```
 

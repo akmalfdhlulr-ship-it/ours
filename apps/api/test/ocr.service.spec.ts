@@ -136,20 +136,20 @@ describe('OcrService (Indonesian Receipt Parsing & Engine)', () => {
       }
     });
 
-    it('should default to active gemini-2.5-flash when GEMINI_MODEL is unset', () => {
+    it('should default to active verified gemini-3.8-flash when GEMINI_MODEL is unset', () => {
       delete process.env.GEMINI_MODEL;
-      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+      expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
     });
 
-    it('should guard against decommissioned gemini-2.0-flash and fallback to gemini-2.5-flash', () => {
+    it('should guard against decommissioned gemini-2.0-flash and fallback to active gemini-3.8-flash', () => {
       process.env.GEMINI_MODEL = 'gemini-2.0-flash';
-      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+      expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
 
       process.env.GEMINI_MODEL = 'gemini-2.0-flash-001';
-      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+      expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
     });
 
-    it('should preserve valid modern Gemini models specified in environment', () => {
+    it('should preserve valid Gemini models specified in environment, including gemini-2.5-flash and gemini-3.8-flash', () => {
       process.env.GEMINI_MODEL = 'gemini-3.8-flash';
       expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
 
@@ -158,6 +158,72 @@ describe('OcrService (Indonesian Receipt Parsing & Engine)', () => {
 
       process.env.GEMINI_MODEL = 'gemini-2.5-flash';
       expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+    });
+
+    it('should strip surrounding quotes and models/ prefix from configured model', () => {
+      process.env.GEMINI_MODEL = '"gemini-3.8-flash"';
+      expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
+
+      process.env.GEMINI_MODEL = "'gemini-2.5-flash'";
+      expect(service.resolveGeminiModel()).toBe('gemini-2.5-flash');
+
+      process.env.GEMINI_MODEL = 'models/gemini-3.8-flash';
+      expect(service.resolveGeminiModel()).toBe('gemini-3.8-flash');
+    });
+  });
+
+  describe('Gemini Vision Fallback & Error Handling', () => {
+    const originalApiKey = process.env.GEMINI_API_KEY;
+
+    afterEach(() => {
+      if (originalApiKey !== undefined) {
+        process.env.GEMINI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.GEMINI_API_KEY;
+      }
+      jest.restoreAllMocks();
+    });
+
+    it('should seamlessly fall back to local Tesseract OCR when Gemini Vision encounters an error without returning fake receipt data', async () => {
+      process.env.GEMINI_API_KEY = 'test-fake-gemini-key-12345';
+
+      // Mock processWithGeminiVision to simulate network failure / 404 / quota error
+      jest.spyOn(service as any, 'processWithGeminiVision').mockRejectedValueOnce(
+        new Error('Gemini Vision HTTP 404: model not available with key test-fake-gemini-key-12345'),
+      );
+
+      // Mock Tesseract parser so we test that Tesseract engine path was invoked
+      const mockTesseractResult = {
+        rawText: 'WARUNG KOPI SENOPATI\n1 Kopi Susu 25.000\nTotal 25.000',
+        merchantName: 'WARUNG KOPI SENOPATI',
+        address: null,
+        transactionDate: null,
+        transactionTime: null,
+        category: 'Kafe' as const,
+        subCategory: 'Makan & Minum',
+        items: [{ name: 'Kopi Susu', quantity: 1, unitPrice: 25000, lineTotal: 25000, category: 'Minuman' as const }],
+        subtotal: 25000,
+        tax: null,
+        serviceCharge: null,
+        grandTotal: 25000,
+        currency: 'IDR' as const,
+        confidence: 85,
+        engine: 'Tesseract.js v7 (Indonesian Receipt Parser)',
+        isArithmeticConsistent: true,
+      };
+
+      jest.spyOn(service as any, 'parseIndonesianReceipt').mockReturnValueOnce(mockTesseractResult);
+
+      // Valid 1x1 png base64
+      const validPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+      const result = await service.processReceiptImage({ imageBase64: validPngBase64 });
+
+      expect(result).toBeDefined();
+      expect(result.merchantName).toBe('WARUNG KOPI SENOPATI');
+      expect(result.grandTotal).toBe(25000);
+      expect(result.engine).toBe('Tesseract.js v7 (Indonesian Receipt Parser)');
+      expect(result.isArithmeticConsistent).toBe(true);
     });
   });
 });
