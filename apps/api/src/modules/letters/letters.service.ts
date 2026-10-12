@@ -56,7 +56,7 @@ export class LettersService {
   private async hasPgTable(): Promise<boolean> {
     try {
       const res: any = await this.prisma.$queryRawUnsafe(
-        `SELECT to_regclass('public.love_letters') as reg;`
+        `SELECT to_regclass('public.love_letters')::text as reg;`
       );
       return !!(res && res[0] && res[0].reg);
     } catch {
