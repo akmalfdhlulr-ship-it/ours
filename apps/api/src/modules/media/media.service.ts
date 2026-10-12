@@ -195,14 +195,26 @@ export class MediaService {
   async directUpload(
     userId: string,
     spaceId: string,
-    dto: { imageBase64: string; filename?: string; mimeType?: string },
+    dto: {
+      imageBase64?: string;
+      dataUrl?: string;
+      filename?: string;
+      fileName?: string;
+      mimeType?: string;
+    },
   ): Promise<MediaAssetItem> {
-    const mime = dto.mimeType || 'image/jpeg';
-    const dataUrl = dto.imageBase64.startsWith('data:')
-      ? dto.imageBase64
-      : `data:${mime};base64,${dto.imageBase64}`;
+    const rawData = dto.imageBase64 || dto.dataUrl;
+    if (!rawData) {
+      throw new BadRequestException('Image data (imageBase64 or dataUrl) is required');
+    }
 
-    const filename = (dto.filename || `memory_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const mime = dto.mimeType || 'image/jpeg';
+    const dataUrl = rawData.startsWith('data:')
+      ? rawData
+      : `data:${mime};base64,${rawData}`;
+
+    const rawFilename = dto.filename || dto.fileName || `memory_${Date.now()}.jpg`;
+    const filename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const storageKey = `media/${spaceId}/${uniqueSuffix}_${filename}`;
     const fileSizeBytes = Math.round(dataUrl.length * 0.75);

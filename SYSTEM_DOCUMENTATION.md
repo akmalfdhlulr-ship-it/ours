@@ -451,4 +451,37 @@ pnpm turbo run build
 ```
 
 ---
+
+## 9. Pipeline Penyimpanan Foto & Sinkronisasi Dua Pasangan
+
+### 9.1 Alur Unggah & Penyimpanan Media (`/media/direct-upload` & `/memories`)
+1. **Pemilihan/Pemotretan Foto di Frontend:**
+   - Pengguna mengambil foto dari kamera atau memilih dari galeri via `expo-image-picker` dengan opsi `base64: true`.
+   - Foto dikonversi ke Base64 Data URL permanen (`data:image/jpeg;base64,...`) sehingga kebal kedaluwarsa URL sementara browser (`blob:` URI).
+2. **Unggah Aman ke Media Storage:**
+   - Frontend memanggil endpoint `POST /api/v1/media/direct-upload`.
+   - Backend memvalidasi keanggotaan aktif ruang pasangan (`CoupleSpaceGuard`).
+   - Backend menghasilkan `storageKey` unik yang terikat pada `coupleSpaceId` (`media/${spaceId}/${timestamp}_${uuid}_${filename}`), mencegah *PostgreSQL B-tree index row size limit error* (maks 2.704 byte).
+   - URL foto disimpan di `metadata.dataUrl` (atau Cloudinary secure URL jika cloud storage dikonfigurasi).
+   - Catatan `MediaAsset` aktif dibuat di database PostgreSQL dengan relasi ke couple space dan uploader.
+3. **Penyimpanan Momen Bersama di Database:**
+   - Frontend memanggil `POST /api/v1/memories` menyertakan `mediaAssetIds: [uploadedAsset.id]`.
+   - Backend membuat entri `Memory` dan menghubungkannya ke `MemoryMedia` secara transaksional.
+4. **Sinkronisasi Otomatis Antar Pasangan:**
+   - `CoupleDataProvider` menjalankan `refreshMemories()` yang memanggil `GET /api/v1/memories` saat aplikasi dibuka atau di-refresh (pull-to-refresh).
+   - Kedua pasangan (`Partner A` dan `Partner B`) melihat galeri momen yang sama persis secara real-time dari sumber data tunggal (*Single Source of Truth*) di PostgreSQL.
+
+---
+
+## 10. Alur Autentikasi Baru & Tautan Otomatis Pasangan (Seamless Pairing)
+
+### 10.1 Registrasi Tanpa Kegagalan Validasi
+- **Nama Panggilan Fleksibel:** Jika pengguna tidak mengisi nama panggilan pada saat pendaftaran, sistem otomatis memberikan nama panggilan default berbasis email atau `'Partner'`, mencegah kegagalan validasi `@IsNotEmpty()` pada `RegisterDto`.
+- **Auto-Verifikasi Cerdas:** Pada mode pengembangan atau saat menggunakan `MockEmailAdapter` (tanpa live SMTP pihak ketiga), akun baru otomatis terverifikasi (`emailVerified: true`) saat pendaftaran sehingga pengguna tidak tersangkut di layar verifikasi email.
+
+### 10.2 Tautan Kode Pasangan Langsung (Seamless Auto-Join)
+- Jika Pasangan B mendaftar melalui tautan undangan atau memasukkan kode di layar awal onboarding (`?code=XXXXXX`), fungsi registrasi di `auth-context.tsx` secara otomatis memanggil `api.spaces.joinByCode({ pairingCode: code })` tepat setelah login berhasil.
+- Ruang pasangan langsung beralih dari status `PENDING` menjadi `ACTIVE`, dan kedua pasangan langsung diarahkan ke layar beranda bersama (`/(tabs)`).
+
+---
 *Dokumentasi ini disusun secara komprehensif untuk memetakan arsitektur utuh, integrasi AI mutakhir, serta alur pengalaman pengguna pada aplikasi OURS.*
