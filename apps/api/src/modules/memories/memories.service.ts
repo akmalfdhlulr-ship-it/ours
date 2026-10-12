@@ -199,8 +199,8 @@ export class MemoriesService {
           height: mm.mediaAsset.height,
           status: mm.mediaAsset.status,
           secureUrl:
-            (mm.mediaAsset.metadata as any)?.dataUrl ||
             (mm.mediaAsset.metadata as any)?.secureUrl ||
+            (mm.mediaAsset.metadata as any)?.dataUrl ||
             (mm.mediaAsset.storageKey.startsWith('http://') ||
             mm.mediaAsset.storageKey.startsWith('https://') ||
             mm.mediaAsset.storageKey.startsWith('data:')

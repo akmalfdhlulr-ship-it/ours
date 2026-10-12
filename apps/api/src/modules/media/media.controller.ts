@@ -110,6 +110,10 @@ export class MediaController {
     try {
       const asset = await this.mediaService.getMediaByKey(key);
       if (asset?.metadata && typeof asset.metadata === 'object') {
+        const secureUrl = (asset.metadata as any).secureUrl;
+        if (secureUrl && typeof secureUrl === 'string' && secureUrl.startsWith('http')) {
+          return res.redirect(secureUrl);
+        }
         const dataUrl = (asset.metadata as any).dataUrl;
         if (dataUrl && typeof dataUrl === 'string') {
           const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);

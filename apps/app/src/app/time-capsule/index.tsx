@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,10 +22,15 @@ export default function TimeCapsuleScreen() {
     activeCapsule,
     addLetter,
     unlockLetter,
+    refreshLetters,
     sendHeartbeat,
     partnerNames,
     activeRole,
   } = useCoupleData();
+
+  useEffect(() => {
+    refreshLetters?.().catch(() => {});
+  }, [refreshLetters]);
 
   // State for tactile vibration feedback
   const [pulseState, setPulseState] = useState<'idle' | 'sending' | 'sent'>('idle');
@@ -49,7 +54,7 @@ export default function TimeCapsuleScreen() {
     }, 900);
   };
 
-  const handleSaveCapsule = () => {
+  const handleSaveCapsule = async () => {
     if (!newLetterTitle.trim() || !newLetterBody.trim()) {
       Alert.alert('Lengkapi Surat', 'Judul dan isi surat wajib diisi.');
       return;
@@ -58,7 +63,7 @@ export default function TimeCapsuleScreen() {
     const isDirect = letterType === 'open';
     const recipient = newSender === partnerNames.user ? partnerNames.partner : partnerNames.user;
 
-    addLetter(
+    await addLetter(
       {
         title: newLetterTitle.trim(),
         sender: newSender,

@@ -751,6 +751,11 @@ class ApiClient {
         method: 'POST',
       });
     },
+    unlock: async (id: string): Promise<LoveLetterDto> => {
+      return this.request<LoveLetterDto>(`/letters/${id}/unlock`, {
+        method: 'POST',
+      });
+    },
   };
 
   // 08C: Time Capsules

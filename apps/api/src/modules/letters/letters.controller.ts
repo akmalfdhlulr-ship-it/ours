@@ -55,4 +55,13 @@ export class LettersController {
   ): Promise<LoveLetterDto> {
     return this.lettersService.send(spaceId, userId, id);
   }
+
+  @Post(':id/unlock')
+  async unlock(
+    @CurrentSpace('id') spaceId: string,
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ): Promise<LoveLetterDto> {
+    return this.lettersService.unlock(spaceId, userId, id);
+  }
 }

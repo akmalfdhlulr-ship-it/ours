@@ -6,6 +6,8 @@ export interface LoveLetterDto {
   title: string;
   content: string;
   status: 'DRAFT' | 'SENT';
+  unlockAt?: string;
+  metadata?: Record<string, any>;
   sentAt?: string;
   readAt?: string;
   createdAt: string;
@@ -16,9 +18,13 @@ export interface CreateLoveLetterDto {
   title: string;
   content: string;
   status?: 'DRAFT' | 'SENT';
+  unlockAt?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface UpdateLoveLetterDto {
   title?: string;
   content?: string;
+  unlockAt?: string;
+  metadata?: Record<string, any>;
 }

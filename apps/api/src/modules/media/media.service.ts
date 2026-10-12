@@ -14,6 +14,7 @@ import {
   UploadSignatureResponse,
 } from '@ours/contracts';
 import { STORAGE_PORT, StoragePort } from './storage.port';
+import * as crypto from 'crypto';
 
 export const MAX_QUOTA_BYTES = 15_000_000_000; // 15 GB decimal quota per approved product decision
 
@@ -219,6 +220,40 @@ export class MediaService {
     const storageKey = `media/${spaceId}/${uniqueSuffix}_${filename}`;
     const fileSizeBytes = Math.round(dataUrl.length * 0.75);
 
+    let cloudSecureUrl: string | undefined;
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (cloudName && apiKey && apiSecret) {
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const paramsToSign = `public_id=${storageKey}&timestamp=${timestamp}${apiSecret}`;
+        const signature = crypto.createHash('sha1').update(paramsToSign).digest('hex');
+
+        const formData = new URLSearchParams();
+        formData.append('file', dataUrl);
+        formData.append('public_id', storageKey);
+        formData.append('api_key', apiKey);
+        formData.append('timestamp', timestamp.toString());
+        formData.append('signature', signature);
+
+        const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (cloudRes.ok) {
+          const cloudData: any = await cloudRes.json();
+          if (cloudData.secure_url) {
+            cloudSecureUrl = cloudData.secure_url;
+          }
+        }
+      } catch (cloudErr) {
+        // Fallback safely preserved with dataUrl
+      }
+    }
+
     const asset = await this.prisma.mediaAsset.create({
       data: {
         coupleSpaceId: spaceId,
@@ -232,6 +267,7 @@ export class MediaService {
         r2ObjectPresent: true,
         metadata: {
           dataUrl,
+          secureUrl: cloudSecureUrl,
         },
       },
     });
@@ -246,7 +282,7 @@ export class MediaService {
   }
 
   private async mapToItem(asset: any): Promise<MediaAssetItem> {
-    const metaUrl = (asset.metadata as any)?.dataUrl || (asset.metadata as any)?.secureUrl;
+    const metaUrl = (asset.metadata as any)?.secureUrl || (asset.metadata as any)?.dataUrl;
     const secureUrl =
       metaUrl ||
       (asset.storageKey.startsWith('http://') ||

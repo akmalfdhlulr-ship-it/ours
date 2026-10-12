@@ -11,6 +11,8 @@ interface StoredLetter {
   title: string;
   content: string;
   status: 'DRAFT' | 'SENT';
+  unlockAt?: Date;
+  metadata?: any;
   sentAt?: Date;
   readAt?: Date;
   createdAt: Date;
@@ -37,13 +39,17 @@ export class LettersService {
           title VARCHAR(255) NOT NULL,
           content TEXT NOT NULL,
           status VARCHAR(20) NOT NULL DEFAULT 'SENT',
+          unlock_at TIMESTAMPTZ,
+          metadata JSONB,
           sent_at TIMESTAMPTZ,
           read_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_love_letters_space ON love_letters(couple_space_id);
       `);
+      await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_love_letters_space ON love_letters(couple_space_id);`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE love_letters ADD COLUMN IF NOT EXISTS unlock_at TIMESTAMPTZ;`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE love_letters ADD COLUMN IF NOT EXISTS metadata JSONB;`);
     } catch {}
   }
 
@@ -72,13 +78,14 @@ export class LettersService {
         const rows: any = await this.prisma.$queryRawUnsafe(
           `SELECT id, couple_space_id as "coupleSpaceId", author_id as "authorId",
                   recipient_id as "recipientId", title, content, status,
+                  unlock_at as "unlockAt", metadata,
                   sent_at as "sentAt", read_at as "readAt",
                   created_at as "createdAt", updated_at as "updatedAt"
            FROM love_letters
            WHERE couple_space_id = $1::uuid
              AND (
                (author_id = $2::uuid)
-               OR (status = 'SENT' AND (author_id != $2::uuid OR recipient_id = $2::uuid))
+               OR (status = 'SENT')
              )
            ORDER BY created_at DESC;`,
           coupleSpaceId,
@@ -119,6 +126,8 @@ export class LettersService {
     const now = new Date();
     // Default to SENT unless explicitly requested as DRAFT
     const isDraft = dto.status === 'DRAFT';
+    const unlockAt = dto.unlockAt ? new Date(dto.unlockAt) : undefined;
+    const metadata = dto.metadata || null;
 
     const letter: StoredLetter = {
       id: randomUUID(),
@@ -128,6 +137,8 @@ export class LettersService {
       title: dto.title.trim(),
       content: dto.content.trim(),
       status: isDraft ? 'DRAFT' : 'SENT',
+      unlockAt,
+      metadata,
       sentAt: !isDraft ? now : undefined,
       createdAt: now,
       updatedAt: now,
@@ -140,9 +151,9 @@ export class LettersService {
     if (await this.hasPgTable()) {
       try {
         await this.prisma.$executeRawUnsafe(
-          `INSERT INTO love_letters (id, couple_space_id, author_id, recipient_id, title, content, status, sent_at, created_at, updated_at)
-           VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, content = EXCLUDED.content, status = EXCLUDED.status;`,
+          `INSERT INTO love_letters (id, couple_space_id, author_id, recipient_id, title, content, status, unlock_at, metadata, sent_at, created_at, updated_at)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
+           ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, content = EXCLUDED.content, status = EXCLUDED.status, unlock_at = EXCLUDED.unlock_at, metadata = EXCLUDED.metadata;`,
           letter.id,
           letter.coupleSpaceId,
           letter.authorId,
@@ -150,6 +161,8 @@ export class LettersService {
           letter.title,
           letter.content,
           letter.status,
+          letter.unlockAt || null,
+          metadata ? JSON.stringify(metadata) : null,
           letter.sentAt || null,
           letter.createdAt,
           letter.updatedAt
@@ -157,6 +170,56 @@ export class LettersService {
       } catch {
         // Fallback safely preserved
       }
+    }
+
+    return this.mapDto(letter);
+  }
+
+  async unlock(coupleSpaceId: string, userId: string, id: string): Promise<LoveLetterDto> {
+    let letter: any = this.letters.get(id);
+    if (!letter && (await this.hasPgTable())) {
+      try {
+        const rows: any = await this.prisma.$queryRawUnsafe(
+          `SELECT id, couple_space_id as "coupleSpaceId", author_id as "authorId",
+                  recipient_id as "recipientId", title, content, status,
+                  unlock_at as "unlockAt", metadata,
+                  sent_at as "sentAt", read_at as "readAt",
+                  created_at as "createdAt", updated_at as "updatedAt"
+           FROM love_letters
+           WHERE id = $1::uuid AND couple_space_id = $2::uuid;`,
+          id,
+          coupleSpaceId
+        );
+        if (rows && rows[0]) {
+          letter = rows[0];
+        }
+      } catch {}
+    }
+
+    if (!letter || letter.coupleSpaceId !== coupleSpaceId) {
+      throw new NotFoundException('Love letter not found');
+    }
+
+    letter.status = 'SENT';
+    letter.unlockAt = new Date();
+    letter.readAt = new Date();
+    letter.updatedAt = new Date();
+    let meta = letter.metadata;
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch {}
+    }
+    meta = { ...(meta || {}), unlocked: true };
+    letter.metadata = meta;
+    this.letters.set(letter.id, letter);
+
+    if (await this.hasPgTable()) {
+      try {
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE love_letters SET status = 'SENT', unlock_at = NOW(), read_at = NOW(), metadata = $1::jsonb, updated_at = NOW() WHERE id = $2::uuid;`,
+          JSON.stringify(meta),
+          letter.id
+        );
+      } catch {}
     }
 
     return this.mapDto(letter);
@@ -233,6 +296,7 @@ export class LettersService {
         const rows: any = await this.prisma.$queryRawUnsafe(
           `SELECT id, couple_space_id as "coupleSpaceId", author_id as "authorId",
                   recipient_id as "recipientId", title, content, status,
+                  unlock_at as "unlockAt", metadata,
                   sent_at as "sentAt", read_at as "readAt",
                   created_at as "createdAt", updated_at as "updatedAt"
            FROM love_letters
@@ -275,7 +339,14 @@ export class LettersService {
     return this.mapDto(letter);
   }
 
-  private mapDto(letter: StoredLetter): LoveLetterDto {
+  private mapDto(letter: any): LoveLetterDto {
+    let meta = letter.metadata;
+    if (typeof meta === 'string') {
+      try {
+        meta = JSON.parse(meta);
+      } catch {}
+    }
+
     return {
       id: letter.id,
       coupleSpaceId: letter.coupleSpaceId,
@@ -284,6 +355,8 @@ export class LettersService {
       title: letter.title,
       content: letter.content,
       status: letter.status,
+      unlockAt: letter.unlockAt ? new Date(letter.unlockAt).toISOString() : undefined,
+      metadata: meta || undefined,
       sentAt: letter.sentAt ? new Date(letter.sentAt).toISOString() : undefined,
       readAt: letter.readAt ? new Date(letter.readAt).toISOString() : undefined,
       createdAt: new Date(letter.createdAt).toISOString(),

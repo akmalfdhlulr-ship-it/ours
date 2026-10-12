@@ -503,7 +503,33 @@ export default function HomeTabScreen() {
                   onPress={() => router.push('/memories' as any)}
                   activeOpacity={0.88}>
                   <View style={styles.polaroidImgBox}>
-                    <Image source={{ uri: mem.imageUrl }} style={styles.polaroidImg} />
+                    {mem.imageUrl ? (
+                      <Image source={{ uri: mem.imageUrl }} style={styles.polaroidImg} />
+                    ) : (
+                      <View
+                        style={[
+                          styles.polaroidImg,
+                          {
+                            backgroundColor: '#EEF2FC',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 8,
+                          },
+                        ]}>
+                        <Ionicons name="camera" size={26} color={luminousColors.primary} />
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '600',
+                            color: luminousColors.primary,
+                            marginTop: 4,
+                            textAlign: 'center',
+                          }}
+                          numberOfLines={1}>
+                          {mem.title}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={styles.polaroidTitle} numberOfLines={1}>
                     {mem.title}

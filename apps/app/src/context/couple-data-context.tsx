@@ -102,6 +102,9 @@ export interface SharedLetter {
   moodIcon: string;
   isUnlocked: boolean;
   secretTeaser: string;
+  authorId?: string;
+  type?: string;
+  createdAt?: string;
 }
 
 export interface SharedQuizState {
@@ -152,9 +155,10 @@ export interface CoupleDataContextValue {
   // Letters / Time Capsule
   letters: SharedLetter[];
   activeCapsule: SharedLetter | null;
-  addLetter: (letter: Omit<SharedLetter, 'id' | 'isUnlocked'>, isDirect?: boolean) => void;
-  addLoveNote: (note: { title: string; content: string; sender: string; recipient: string }) => void;
-  unlockLetter: (id: string) => void;
+  addLetter: (letter: Omit<SharedLetter, 'id' | 'isUnlocked'>, isDirect?: boolean) => Promise<void>;
+  addLoveNote: (note: { title: string; content: string; sender: string; recipient: string }) => Promise<void>;
+  unlockLetter: (id: string) => Promise<void>;
+  refreshLetters: () => Promise<void>;
 
   // Love Quiz
   quizState: SharedQuizState;
@@ -241,7 +245,11 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const mapped: SharedMemory[] = serverItems.map((m) => {
           const firstMedia = m.media && m.media.length > 0 ? m.media[0] : null;
           let imageUrl =
+            ((firstMedia?.mediaAsset as any)?.metadata as any)?.secureUrl ||
+            ((firstMedia?.mediaAsset as any)?.metadata as any)?.dataUrl ||
             firstMedia?.mediaAsset?.secureUrl ||
+            (firstMedia as any)?.secureUrl ||
+            (m as any).imageUrl ||
             (firstMedia?.mediaAsset?.storageKey?.startsWith('http')
               ? firstMedia.mediaAsset.storageKey
               : '') ||
@@ -347,14 +355,115 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [coupleSpace?.id, coupleSpace?.status]);
 
+  // Sync love letters, memos & time capsules from backend database
+  const refreshLetters = useCallback(async () => {
+    if (!coupleSpace?.id || coupleSpace.status !== 'ACTIVE') return;
+    try {
+      const serverItems = await api.letters.list();
+      if (Array.isArray(serverItems)) {
+        const openedLetters: SharedLetter[] = [];
+        let pendingCapsule: SharedLetter | null = null;
+        const nowTime = Date.now();
+
+        for (const item of serverItems) {
+          const meta = (item as any).metadata || {};
+          const isCapsule = meta.type === 'capsule';
+          const isMemo = meta.type === 'memo';
+          const senderName =
+            meta.sender ||
+            (item.authorId === user?.id ? (partnerNames.user || 'Saya') : (partnerNames.partner || 'Pasangan'));
+          const recipientName =
+            meta.recipient ||
+            (item.authorId === user?.id ? (partnerNames.partner || 'Pasangan') : (partnerNames.user || 'Saya'));
+
+          let unlockDateLabel = meta.unlockDateLabel || 'Hari Ini';
+          let isUnlocked = true;
+
+          if (isCapsule && item.unlockAt) {
+            const unlockTimestamp = new Date(item.unlockAt).getTime();
+            if (unlockTimestamp > nowTime && !meta.unlocked) {
+              isUnlocked = false;
+            }
+          }
+
+          const shared: SharedLetter = {
+            id: item.id,
+            title: item.title,
+            sender: senderName,
+            recipient: recipientName,
+            sealedDate: item.createdAt
+              ? new Date(item.createdAt).toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })
+              : 'Hari Ini',
+            unlockDate: isCapsule ? unlockDateLabel : 'Hari Ini',
+            fullText: item.content,
+            wordCount: item.content.split(/\s+/).filter(Boolean).length,
+            preview:
+              item.content.length > 90
+                ? `"${item.content.substring(0, 90)}..."`
+                : `"${item.content}"`,
+            mood: isMemo
+              ? 'Memo Manis'
+              : isCapsule
+              ? isUnlocked
+                ? 'Surat Kasih Terbuka'
+                : 'Kapsul Waktu Rahasia'
+              : 'Penuh Kasih',
+            moodIcon: isCapsule ? (isUnlocked ? 'mail-open-outline' : 'lock-closed') : 'heart',
+            isUnlocked: isUnlocked,
+            secretTeaser:
+              meta.secretTeaser ||
+              (isCapsule
+                ? `Surat rahasia dari ${senderName}... 🔒✨`
+                : 'Memo manis yang langsung bisa dibaca berdua 💕'),
+            authorId: item.authorId,
+            type: meta.type || (isCapsule ? 'capsule' : isMemo ? 'memo' : 'letter'),
+            createdAt: item.createdAt,
+          };
+
+          if (isCapsule && !isUnlocked && !pendingCapsule) {
+            pendingCapsule = shared;
+          } else {
+            openedLetters.push(shared);
+          }
+        }
+
+        setLetters(openedLetters);
+        setActiveCapsule(pendingCapsule);
+        await storage.setItem(STORAGE_KEY_LETTERS, JSON.stringify(openedLetters));
+        if (pendingCapsule) {
+          await storage.setItem(STORAGE_KEY_CAPSULE, JSON.stringify(pendingCapsule));
+        } else {
+          await storage.removeItem(STORAGE_KEY_CAPSULE);
+        }
+      }
+    } catch (err) {
+      console.warn('Error refreshing letters from backend:', err);
+    }
+  }, [coupleSpace?.id, coupleSpace?.status, user?.id, partnerNames.user, partnerNames.partner]);
+
   useEffect(() => {
     if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
       refreshMemories();
       refreshExpenses();
       refreshWishlist();
       refreshDates();
+      refreshLetters();
     }
-  }, [coupleSpace?.id, coupleSpace?.status, refreshMemories, refreshExpenses, refreshWishlist, refreshDates]);
+  }, [coupleSpace?.id, coupleSpace?.status, refreshMemories, refreshExpenses, refreshWishlist, refreshDates, refreshLetters]);
+
+  // Active partner synchronization polling interval (every 10s)
+  useEffect(() => {
+    if (!coupleSpace?.id || coupleSpace.status !== 'ACTIVE') return;
+    const interval = setInterval(() => {
+      refreshLetters().catch(() => {});
+      refreshMemories().catch(() => {});
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [coupleSpace?.id, coupleSpace?.status, refreshLetters, refreshMemories]);
 
   // Genuine calculation for Days Together strictly from real couple space dates
   const calculateDaysTogether = useCallback((): number => {
@@ -600,6 +709,45 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     letter: Omit<SharedLetter, 'id' | 'isUnlocked'>,
     isDirect?: boolean,
   ) => {
+    let unlockAt: string | undefined;
+    if (!isDirect && letter.unlockDate) {
+      const d = new Date();
+      if (letter.unlockDate.includes('1 Bulan')) {
+        d.setMonth(d.getMonth() + 1);
+      } else if (letter.unlockDate.includes('3 Bulan')) {
+        d.setMonth(d.getMonth() + 3);
+      } else if (letter.unlockDate.includes('1 Tahun')) {
+        d.setFullYear(d.getFullYear() + 1);
+      } else {
+        d.setDate(d.getDate() + 7);
+      }
+      unlockAt = d.toISOString();
+    }
+
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        await api.letters.create({
+          title: letter.title,
+          content: letter.fullText,
+          status: 'SENT',
+          unlockAt: isDirect ? undefined : unlockAt,
+          metadata: {
+            type: isDirect ? 'letter' : 'capsule',
+            sender: letter.sender,
+            recipient: letter.recipient,
+            unlockDateLabel: letter.unlockDate,
+            secretTeaser: letter.secretTeaser,
+            mood: letter.mood,
+          },
+        });
+        await refreshLetters();
+        return;
+      } catch (err) {
+        console.warn('Error saving letter to backend database:', err);
+      }
+    }
+
+    // Local state fallback if offline
     if (isDirect) {
       const directLetter: SharedLetter = {
         ...letter,
@@ -626,7 +774,7 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     sender: string;
     recipient: string;
   }) => {
-    const newNote: SharedLetter = {
+    const optimisticNote: SharedLetter = {
       id: `note-${Date.now()}`,
       title: note.title,
       sender: note.sender,
@@ -634,19 +782,49 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       sealedDate: 'Hari Ini',
       unlockDate: 'Hari Ini',
       fullText: note.content,
-      wordCount: note.content.split(/\s+/).length,
+      wordCount: note.content.split(/\s+/).filter(Boolean).length,
       preview: note.content.slice(0, 80) + '...',
-      mood: 'Penuh Kasih',
+      mood: 'Memo Manis',
       moodIcon: 'heart',
       isUnlocked: true,
       secretTeaser: 'Memo manis yang langsung bisa dibaca berdua 💕',
+      type: 'memo',
+      createdAt: new Date().toISOString(),
     };
-    const updated = [newNote, ...letters];
+    const updated = [optimisticNote, ...letters.filter((l) => l.id !== optimisticNote.id)];
     setLetters(updated);
     await storage.setItem(STORAGE_KEY_LETTERS, JSON.stringify(updated));
+
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        await api.letters.create({
+          title: note.title,
+          content: note.content,
+          status: 'SENT',
+          metadata: {
+            type: 'memo',
+            sender: note.sender,
+            recipient: note.recipient,
+          },
+        });
+        await refreshLetters();
+      } catch (err) {
+        console.warn('Error saving love memo to backend database:', err);
+      }
+    }
   };
 
   const unlockLetter = async (id: string) => {
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        await api.letters.unlock(id);
+        await refreshLetters();
+        return;
+      } catch (err) {
+        console.warn('Error unlocking capsule on backend database:', err);
+      }
+    }
+
     if (activeCapsule && activeCapsule.id === id) {
       const unlocked = { ...activeCapsule, isUnlocked: true };
       setActiveCapsule(null);
@@ -749,6 +927,7 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addLetter,
         addLoveNote,
         unlockLetter,
+        refreshLetters,
         quizState,
         submitDanielAnswer,
         submitSasaAnswer,
