@@ -12,8 +12,6 @@ import { AppModule } from './app.module';
 import { AppLogger } from './common/logging/logger.service';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 
-import { json, urlencoded } from 'express';
-
 async function bootstrap() {
   const logger = new AppLogger();
 
@@ -22,8 +20,16 @@ async function bootstrap() {
   });
 
   // Support high-resolution camera photo uploads and receipts (up to 50MB base64)
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ limit: '50mb', extended: true }));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const express = require('express');
+    if (express && typeof express.json === 'function') {
+      app.use(express.json({ limit: '50mb' }));
+      app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    }
+  } catch (err: any) {
+    logger.warn(`Could not attach custom 50MB body parser limit: ${err?.message || err}`);
+  }
 
   // Enable graceful shutdown hooks
   app.enableShutdownHooks();
