@@ -237,7 +237,18 @@ export default function HomeScreen() {
               <Ionicons name="key-outline" size={16} color={luminousColors.onSurfaceVariant} />
               <Text style={styles.secondaryCodeText}>
                 Sudah punya kode pasangan?{' '}
-                <Text style={styles.secondaryCodeBold}>Masuk</Text>
+                <Text style={styles.secondaryCodeBold}>Tautkan</Text>
+              </Text>
+            </TouchableOpacity>
+
+            {/* Direct Login Button for Existing Users */}
+            <TouchableOpacity
+              style={styles.tertiaryLoginBtn}
+              onPress={() => router.push('/(auth)/login')}
+              activeOpacity={0.8}>
+              <Text style={styles.tertiaryLoginText}>
+                Sudah memiliki akun?{' '}
+                <Text style={styles.tertiaryLoginBold}>Masuk Sekarang</Text>
               </Text>
             </TouchableOpacity>
           </View>
@@ -645,6 +656,18 @@ const styles = StyleSheet.create({
     color: '#5B4041',
   },
   secondaryCodeBold: {
+    fontWeight: '700',
+    color: '#B90538',
+  },
+  tertiaryLoginBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  tertiaryLoginText: {
+    fontSize: 13,
+    color: '#5B4041',
+  },
+  tertiaryLoginBold: {
     fontWeight: '700',
     color: '#B90538',
   },

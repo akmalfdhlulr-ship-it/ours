@@ -10,6 +10,8 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +28,14 @@ const CATEGORY_TABS = [
 
 export default function SharedMemoriesScreen() {
   const router = useRouter();
-  const { memories, addMemory, deleteMemory, partnerNames, activeRole } = useCoupleData();
+  const {
+    memories,
+    addMemory,
+    deleteMemory,
+    refreshMemories,
+    partnerNames,
+    activeRole,
+  } = useCoupleData();
 
   const [activeTab, setActiveTab] = useState<string>('Semua Momen');
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
@@ -39,6 +48,19 @@ export default function SharedMemoriesScreen() {
   const [newDescription, setNewDescription] = useState<string>('');
   const [newImageUri, setNewImageUri] = useState<string>('');
   const [newAuthor, setNewAuthor] = useState<string>(partnerNames.user);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshMemories();
+    } catch (err: any) {
+      console.warn('Refresh memories error:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Launch Image Picker from gallery
   const handlePickImage = async () => {
@@ -52,10 +74,16 @@ export default function SharedMemoriesScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: true,
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setNewImageUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.base64) {
+          setNewImageUri(`data:image/jpeg;base64,${asset.base64}`);
+        } else {
+          setNewImageUri(asset.uri);
+        }
       }
     } catch (err: any) {
       Alert.alert('Kendala Galeri', err?.message || 'Gagal memilih foto.');
@@ -74,17 +102,23 @@ export default function SharedMemoriesScreen() {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setNewImageUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.base64) {
+          setNewImageUri(`data:image/jpeg;base64,${asset.base64}`);
+        } else {
+          setNewImageUri(asset.uri);
+        }
       }
     } catch (err: any) {
       Alert.alert('Kendala Kamera', err?.message || 'Gagal membuka kamera.');
     }
   };
 
-  const handleSaveMemory = () => {
+  const handleSaveMemory = async () => {
     if (!newTitle.trim()) {
       Alert.alert('Judul Wajib Diisi', 'Berikan judul manis untuk momen kencan ini.');
       return;
@@ -95,20 +129,27 @@ export default function SharedMemoriesScreen() {
       return;
     }
 
-    addMemory({
-      title: newTitle.trim(),
-      description: newDescription.trim() || 'Momen manis yang tak terlupakan bersama.',
-      locationName: newLocation.trim() || 'Jakarta',
-      date: 'Hari Ini',
-      author: newAuthor,
-      imageUrl: newImageUri,
-    });
+    setIsSaving(true);
+    try {
+      await addMemory({
+        title: newTitle.trim(),
+        description: newDescription.trim() || 'Momen manis yang tak terlupakan bersama.',
+        locationName: newLocation.trim() || 'Jakarta',
+        date: 'Hari Ini',
+        author: newAuthor,
+        imageUrl: newImageUri,
+      });
 
-    setIsAddModalOpen(false);
-    setNewTitle('');
-    setNewLocation('');
-    setNewDescription('');
-    setNewImageUri('');
+      setIsAddModalOpen(false);
+      setNewTitle('');
+      setNewLocation('');
+      setNewDescription('');
+      setNewImageUri('');
+    } catch (err: any) {
+      Alert.alert('Kendala Simpan', err?.message || 'Gagal menyimpan momen ke ruang berdua.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const highlightMemory = memories[0];
@@ -160,7 +201,10 @@ export default function SharedMemoriesScreen() {
       <ScrollView
         style={styles.scrollArea}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }>
         {/* Title Header */}
         <View style={styles.titleSection}>
           <Text style={styles.pageTitle}>Buku Waktu Berdua</Text>
@@ -441,11 +485,21 @@ export default function SharedMemoriesScreen() {
             </ScrollView>
 
             <TouchableOpacity
-              style={styles.saveMemoryBtn}
+              style={[styles.saveMemoryBtn, isSaving && { opacity: 0.8 }]}
               onPress={handleSaveMemory}
+              disabled={isSaving}
               activeOpacity={0.88}>
-              <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-              <Text style={styles.saveMemoryBtnText}>Simpan ke Buku Waktu ✨</Text>
+              {isSaving ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={styles.saveMemoryBtnText}>Menyimpan ke Ruang Berdua...</Text>
+                </View>
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                  <Text style={styles.saveMemoryBtnText}>Simpan ke Buku Waktu ✨</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>

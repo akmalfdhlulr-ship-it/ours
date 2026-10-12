@@ -33,7 +33,12 @@ interface AuthContextValue {
   clearError: () => void;
   refresh: () => Promise<void>;
   login: (email: string, pass: string) => Promise<void>;
-  register: (email: string, pass: string, name?: string) => Promise<void>;
+  register: (
+    email: string,
+    pass: string,
+    name?: string,
+    pairingCode?: string,
+  ) => Promise<void>;
   verifyEmail: (code: string) => Promise<void>;
   resendVerification: () => Promise<ResendVerificationResponse>;
   logout: () => Promise<void>;
@@ -114,7 +119,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const register = async (email: string, pass: string, name?: string) => {
+  const register = async (
+    email: string,
+    pass: string,
+    name?: string,
+    pairingCode?: string,
+  ) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -132,6 +142,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           await api.auth.verifyEmail({ token: regRes.verificationToken });
         } catch {
           // If auto-verify fails, continue to let user verify manually
+        }
+      }
+
+      // If a pairing code was provided, join immediately
+      if (pairingCode && pairingCode.trim().length === 6) {
+        try {
+          await api.spaces.joinByCode({
+            pairingCode: pairingCode.trim().toUpperCase(),
+          });
+        } catch (pairErr) {
+          console.warn('Auto-pairing code join error during registration:', pairErr);
         }
       }
 

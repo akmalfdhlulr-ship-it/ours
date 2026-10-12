@@ -203,7 +203,8 @@ export class MediaService {
       : `data:${mime};base64,${dto.imageBase64}`;
 
     const filename = (dto.filename || `memory_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storageKey = dataUrl;
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const storageKey = `media/${spaceId}/${uniqueSuffix}_${filename}`;
     const fileSizeBytes = Math.round(dataUrl.length * 0.75);
 
     const asset = await this.prisma.mediaAsset.create({
@@ -217,6 +218,9 @@ export class MediaService {
         status: 'ACTIVE',
         quotaCounted: true,
         r2ObjectPresent: true,
+        metadata: {
+          dataUrl,
+        },
       },
     });
 
@@ -224,12 +228,14 @@ export class MediaService {
   }
 
   private async mapToItem(asset: any): Promise<MediaAssetItem> {
+    const metaUrl = (asset.metadata as any)?.dataUrl || (asset.metadata as any)?.secureUrl;
     const secureUrl =
-      asset.storageKey.startsWith('http://') ||
+      metaUrl ||
+      (asset.storageKey.startsWith('http://') ||
       asset.storageKey.startsWith('https://') ||
       asset.storageKey.startsWith('data:')
         ? asset.storageKey
-        : await this.storagePort.generatePrivateDeliveryUrl(asset.storageKey);
+        : await this.storagePort.generatePrivateDeliveryUrl(asset.storageKey));
 
     return {
       id: asset.id,

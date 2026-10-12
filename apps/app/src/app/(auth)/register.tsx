@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@ours/design-tokens';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ code?: string }>();
   const { register } = useAuth();
 
   const [displayName, setDisplayName] = useState('');
@@ -52,7 +53,17 @@ export default function RegisterScreen() {
     setLoading(true);
 
     try {
-      await register(email.trim(), password, displayName.trim() || undefined);
+      const resolvedDisplayName =
+        displayName.trim() ||
+        email.trim().split('@')[0] ||
+        'Partner';
+
+      await register(
+        email.trim(),
+        password,
+        resolvedDisplayName,
+        searchParams.code ? searchParams.code.trim().toUpperCase() : undefined,
+      );
       router.replace('/');
     } catch (err: any) {
       setErrorMessage(err?.message || 'Pendaftaran gagal. Silakan coba lagi.');
@@ -82,6 +93,16 @@ export default function RegisterScreen() {
         </View>
 
         <View style={styles.formCard}>
+          {searchParams.code ? (
+            <View style={styles.pairingCodeBanner}>
+              <Ionicons name="link" size={16} color="#2563EB" style={{ marginRight: 6 }} />
+              <Text style={styles.pairingCodeBannerText}>
+                Menghubungkan ke pasangan dengan kode:{' '}
+                <Text style={{ fontWeight: '700' }}>{searchParams.code}</Text>
+              </Text>
+            </View>
+          ) : null}
+
           {errorMessage && (
             <View style={styles.errorBanner}>
               <Ionicons name="alert-circle" size={16} color="#DC2626" style={{ marginRight: 6 }} />
@@ -210,6 +231,20 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
     gap: 12,
+  },
+  pairingCodeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  pairingCodeBannerText: {
+    color: '#1D4ED8',
+    fontSize: 12,
+    flex: 1,
   },
   errorBanner: {
     flexDirection: 'row',

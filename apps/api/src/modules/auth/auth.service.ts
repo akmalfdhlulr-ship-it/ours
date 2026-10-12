@@ -59,11 +59,14 @@ export class AuthService {
       Date.now() + AUTH_CONFIG.EMAIL_VERIFICATION_EXPIRY_HOURS * 3600000,
     );
 
+    const isMockEmail = !process.env.SMTP_HOST && !process.env.RESEND_API_KEY;
+    const shouldAutoVerify = process.env.AUTO_VERIFY_EMAIL === 'true' || isMockEmail;
+
     const user = await this.prisma.user.create({
       data: {
         email: normalized,
         passwordHash,
-        emailVerified: false,
+        emailVerified: shouldAutoVerify,
         emailVerificationTokenHash: verificationTokenHash,
         emailVerificationExpiresAt: verificationExpiresAt,
         profile: {

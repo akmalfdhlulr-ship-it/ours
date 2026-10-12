@@ -53,7 +53,10 @@ export default function VerifyEmailScreen() {
       const res = await resendVerification();
       if (res?.verificationToken) {
         setCode(res.verificationToken);
-        setInfoMessage('Token verifikasi berhasil diterima & terisi otomatis. Silakan tekan tombol verifikasi.');
+        setInfoMessage('Token verifikasi berhasil diterima & langsung diverifikasi...');
+        await verifyEmail(res.verificationToken);
+        router.replace('/');
+        return;
       } else {
         setInfoMessage('Kode verifikasi baru telah dikirimkan ke email Anda.');
       }

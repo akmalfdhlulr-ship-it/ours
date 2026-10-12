@@ -199,11 +199,13 @@ export class MemoriesService {
           height: mm.mediaAsset.height,
           status: mm.mediaAsset.status,
           secureUrl:
-            mm.mediaAsset.storageKey.startsWith('http://') ||
+            (mm.mediaAsset.metadata as any)?.dataUrl ||
+            (mm.mediaAsset.metadata as any)?.secureUrl ||
+            (mm.mediaAsset.storageKey.startsWith('http://') ||
             mm.mediaAsset.storageKey.startsWith('https://') ||
             mm.mediaAsset.storageKey.startsWith('data:')
               ? mm.mediaAsset.storageKey
-              : `/api/v1/media/stream?key=${encodeURIComponent(mm.mediaAsset.storageKey)}`,
+              : `/api/v1/media/stream?key=${encodeURIComponent(mm.mediaAsset.storageKey)}`),
           capturedAt: mm.mediaAsset.capturedAt ? mm.mediaAsset.capturedAt.toISOString() : null,
           createdAt: mm.mediaAsset.createdAt.toISOString(),
         },

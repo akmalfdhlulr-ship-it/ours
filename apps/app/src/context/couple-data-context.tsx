@@ -7,6 +7,26 @@ import React, {
 } from 'react';
 import { storage } from '../utils/storage';
 import { useAuth } from './auth-context';
+import { api } from '../services/api';
+
+async function uriToBase64(uri: string): Promise<string> {
+  if (uri.startsWith('data:')) return uri;
+  try {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve(reader.result as string);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn('uriToBase64 fallback for:', uri, err);
+    return uri;
+  }
+}
 
 export interface MenuItem {
   qty: string;
@@ -109,8 +129,9 @@ export interface CoupleDataContextValue {
 
   // Memories
   memories: SharedMemory[];
-  addMemory: (memory: Omit<SharedMemory, 'id'>) => void;
-  deleteMemory: (id: string) => void;
+  addMemory: (memory: Omit<SharedMemory, 'id'>) => Promise<void>;
+  deleteMemory: (id: string) => Promise<void>;
+  refreshMemories: () => Promise<void>;
 
   // Wishlist
   wishlist: SharedWishlistItem[];
@@ -191,6 +212,66 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [lastPulseSentAt, setLastPulseSentAt] = useState<number | null>(null);
   const [lastPulseSender, setLastPulseSender] = useState<string | null>(null);
 
+  const partnerMember = coupleSpace?.members?.find((m) => m.userId !== user?.id);
+  const myRealName =
+    (user as any)?.profile?.displayName ||
+    (user as any)?.displayName ||
+    user?.email?.split('@')[0] ||
+    (activeRole === 'sasa' ? 'Sasa' : 'Daniel');
+  const partnerRealName =
+    partnerMember?.displayName ||
+    (coupleSpace?.status === 'ACTIVE' ? 'Pasangan' : 'Menunggu Pasangan');
+
+  const partnerNames = {
+    user: myRealName,
+    partner: partnerRealName,
+  };
+
+  // Sync memories from backend PostgreSQL database when space is active
+  const refreshMemories = useCallback(async () => {
+    if (!coupleSpace?.id || coupleSpace.status !== 'ACTIVE') {
+      return;
+    }
+    try {
+      const serverItems = await api.memories.list();
+      if (Array.isArray(serverItems)) {
+        const mapped: SharedMemory[] = serverItems.map((m) => {
+          const firstMedia = m.media && m.media.length > 0 ? m.media[0] : null;
+          const imageUrl =
+            firstMedia?.mediaAsset?.secureUrl ||
+            (firstMedia?.mediaAsset?.storageKey?.startsWith('http')
+              ? firstMedia.mediaAsset.storageKey
+              : '') ||
+            '';
+
+          return {
+            id: m.id,
+            title: m.title,
+            description: m.description || '',
+            date: m.memoryDate || 'Hari Ini',
+            locationName: m.locationName || 'Jakarta',
+            author:
+              m.createdById === user?.id
+                ? (partnerNames.user || 'Saya')
+                : (partnerNames.partner || 'Pasangan'),
+            imageUrl,
+            isFavorite: m.isFavorite,
+          };
+        });
+        setMemories(mapped);
+        await storage.setItem(STORAGE_KEY_MEMORIES, JSON.stringify(mapped));
+      }
+    } catch (err) {
+      console.warn('Error refreshing memories from backend:', err);
+    }
+  }, [coupleSpace?.id, coupleSpace?.status, user?.id, partnerNames.user, partnerNames.partner]);
+
+  useEffect(() => {
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      refreshMemories();
+    }
+  }, [coupleSpace?.id, coupleSpace?.status, refreshMemories]);
+
   // Genuine calculation for Days Together strictly from real couple space dates
   const calculateDaysTogether = useCallback((): number => {
     if (coupleSpace?.anniversaryDate) {
@@ -258,16 +339,66 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Memories
   const addMemory = async (item: Omit<SharedMemory, 'id'>) => {
+    let secureImageUrl = item.imageUrl;
+    let mediaAssetId: string | undefined;
+
+    // 1. Direct upload photo to cloud/backend media storage if couple space is active
+    if (coupleSpace?.id && item.imageUrl) {
+      try {
+        const base64Data = await uriToBase64(item.imageUrl);
+        const uploaded = await api.media.directUpload({
+          imageBase64: base64Data,
+          filename: `memory_${Date.now()}.jpg`,
+          mimeType: 'image/jpeg',
+        });
+        mediaAssetId = uploaded.id;
+        if (uploaded.secureUrl) {
+          secureImageUrl = uploaded.secureUrl;
+        }
+      } catch (uploadErr) {
+        console.warn('Error uploading photo in addMemory:', uploadErr);
+      }
+    }
+
+    // 2. Persist memory in PostgreSQL backend if couple space is ACTIVE
+    let memoryId = `mem-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        const created = await api.memories.create({
+          title: item.title,
+          description: item.description,
+          memoryDate: new Date().toISOString().split('T')[0],
+          locationName: item.locationName,
+          mediaAssetIds: mediaAssetId ? [mediaAssetId] : [],
+        });
+        memoryId = created.id;
+        if (created.media?.[0]?.mediaAsset?.secureUrl) {
+          secureImageUrl = created.media[0].mediaAsset.secureUrl;
+        }
+      } catch (createErr) {
+        console.warn('Error saving memory to backend database:', createErr);
+      }
+    }
+
+    // 3. Update local state and sync storage
     const newMemory: SharedMemory = {
       ...item,
-      id: `mem-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      id: memoryId,
+      imageUrl: secureImageUrl,
     };
-    const updated = [newMemory, ...memories];
+    const updated = [newMemory, ...memories.filter((m) => m.id !== memoryId)];
     setMemories(updated);
     await storage.setItem(STORAGE_KEY_MEMORIES, JSON.stringify(updated));
   };
 
   const deleteMemory = async (id: string) => {
+    if (coupleSpace?.id && coupleSpace.status === 'ACTIVE') {
+      try {
+        await api.memories.delete(id);
+      } catch (err) {
+        console.warn('Error deleting memory on backend:', err);
+      }
+    }
     const updated = memories.filter((m) => m.id !== id);
     setMemories(updated);
     await storage.setItem(STORAGE_KEY_MEMORIES, JSON.stringify(updated));
@@ -450,21 +581,6 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await resetToCleanState();
   };
 
-  const partnerMember = coupleSpace?.members?.find((m) => m.userId !== user?.id);
-  const myRealName =
-    (user as any)?.profile?.displayName ||
-    (user as any)?.displayName ||
-    user?.email?.split('@')[0] ||
-    (activeRole === 'sasa' ? 'Sasa' : 'Daniel');
-  const partnerRealName =
-    partnerMember?.displayName ||
-    (coupleSpace?.status === 'ACTIVE' ? 'Pasangan' : 'Menunggu Pasangan');
-
-  const partnerNames = {
-    user: myRealName,
-    partner: partnerRealName,
-  };
-
   return (
     <CoupleDataContext.Provider
       value={{
@@ -479,6 +595,7 @@ export const CoupleDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         memories,
         addMemory,
         deleteMemory,
+        refreshMemories,
         wishlist,
         addWishlistItem,
         addWishlistSavings,
