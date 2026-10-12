@@ -197,6 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch {
       // Ignored
     } finally {
+      await api.clearStoredToken();
       setUser(null);
       setCoupleSpace(null);
       setPendingInvitation(null);

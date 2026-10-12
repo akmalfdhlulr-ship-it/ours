@@ -33,6 +33,7 @@ const DEFAULT_CATEGORY_IMAGES: Record<string, string> = {
 };
 
 function getPlaceImage(place: PlaceItem): string {
+  if (place.metadata?.imageUrl) return place.metadata.imageUrl;
   if (place.metadata?.photoUrl) return place.metadata.photoUrl;
   if (place.metadata?.image) return place.metadata.image;
   const cat = (place.category || '').toLowerCase();
@@ -273,8 +274,15 @@ export default function ExploreTabScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipsScroll}>
-          {['Semua', '🍽️ Fine Dining', '☕ Kafe Santai', '🌿 Piknik Alam', '🎨 Galeri Seni'].map(
-            (cat) => {
+          {[
+            'Semua',
+            '🍽️ Fine Dining',
+            '☕ Kafe Santai',
+            '🌿 Piknik Alam',
+            '🎨 Galeri Seni',
+            '🍨 Dessert & Gelato',
+            '🌆 Rooftop',
+          ].map((cat) => {
               const isActive = activeCategory === cat;
               return (
                 <TouchableOpacity

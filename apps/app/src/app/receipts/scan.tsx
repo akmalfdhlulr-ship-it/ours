@@ -138,6 +138,34 @@ async function uriToBase64(uri: string): Promise<string> {
 
       if (!result || (!result.grandTotal && (!result.items || result.items.length === 0))) {
         setIsProcessingOcr(false);
+        if (Platform.OS === 'web') {
+          const goManual =
+            typeof window !== 'undefined' &&
+            window.confirm(
+              'Teks struk belum terdeteksi sempurna. Mau isi nominal dan nama tempat kencan secara manual?',
+            );
+          if (goManual) {
+            router.push({
+              pathname: '/receipts/[id]',
+              params: {
+                id: 'manual-entry',
+                data: JSON.stringify({
+                  merchantName: 'Tempat Kencan',
+                  category: 'Kuliner & Dining',
+                  items: [{ qty: '1x', name: 'Kencan Berdua', category: 'Menu', price: 'Rp 0', priceNumber: 0 }],
+                  subtotal: 0,
+                  tax: 0,
+                  grandTotal: 0,
+                  accuracy: 100,
+                  date: 'Hari Ini',
+                  receiptImageUri: uri,
+                }),
+              },
+            } as any);
+          }
+          return;
+        }
+
         Alert.alert(
           'Struk Kurang Terbaca',
           'Teks struk belum terdeteksi sempurna. Mau isi nominal dan nama tempat kencan secara manual?',
@@ -212,6 +240,33 @@ async function uriToBase64(uri: string): Promise<string> {
       } as any);
     } catch (err: any) {
       setIsProcessingOcr(false);
+      if (Platform.OS === 'web') {
+        const goManual =
+          typeof window !== 'undefined' &&
+          window.confirm(
+            'Sistem AI sedang sibuk atau gambar kurang jelas. Apakah ingin memasukkan nominal pengeluaran secara manual?',
+          );
+        if (goManual) {
+          router.push({
+            pathname: '/receipts/[id]',
+            params: {
+              id: 'manual-entry',
+              data: JSON.stringify({
+                merchantName: 'Tempat Kencan',
+                category: 'Kuliner & Dining',
+                items: [{ qty: '1x', name: 'Kencan Berdua', category: 'Menu', price: 'Rp 0', priceNumber: 0 }],
+                subtotal: 0,
+                tax: 0,
+                grandTotal: 0,
+                accuracy: 100,
+                date: 'Hari Ini',
+                receiptImageUri: uri,
+              }),
+            },
+          } as any);
+        }
+        return;
+      }
       Alert.alert(
         'Struk Kurang Jelas',
         'Foto berhasil diambil tetapi sistem AI tidak dapat membaca teks. Mau masukkan nominal secara manual?',

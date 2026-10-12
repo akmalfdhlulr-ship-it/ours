@@ -57,6 +57,8 @@ export default function CoupleSettingsHubScreen() {
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState<boolean>(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState<boolean>(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState<boolean>(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
+  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
 
   // Form states
   const [customBudgetInput, setCustomBudgetInput] = useState<string>(totalBudget.toString());
@@ -169,21 +171,21 @@ export default function CoupleSettingsHubScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Keluar dari Akun Kita',
-      'Apakah kamu yakin ingin keluar dari sesi aplikasi saat ini?',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Keluar',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            router.replace('/(auth)/login');
-          },
-        },
-      ],
-    );
+    setIsLogoutModalOpen(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      await api.clearStoredToken();
+    } catch (e) {
+      console.warn('Logout error:', e);
+    } finally {
+      setIsLoggingOut(false);
+      setIsLogoutModalOpen(false);
+      router.replace('/(auth)/login');
+    }
   };
 
   return (
@@ -1047,6 +1049,77 @@ export default function CoupleSettingsHubScreen() {
                 <Text style={styles.modalSubmitBtnText}>Mengerti, Terima Kasih!</Text>
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------------- 6. MODAL: KONFIRMASI KELUAR DARI AKUN KITA ---------------- */}
+      <Modal
+        visible={isLogoutModalOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => !isLoggingOut && setIsLogoutModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxWidth: 360, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }]}>
+            <View
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: 30,
+                backgroundColor: '#FEE4E2',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 16,
+              }}>
+              <Ionicons name="log-out-outline" size={30} color="#D92D20" />
+            </View>
+            <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 8, fontSize: 18 }]}>
+              Keluar dari Akun Kita?
+            </Text>
+            <Text
+              style={{
+                fontSize: 14,
+                color: '#535862',
+                textAlign: 'center',
+                marginBottom: 24,
+                lineHeight: 20,
+              }}>
+              Sesi akun akan ditutup di perangkat ini. Data dan momen kencan berdua tetap tersimpan aman di cloud.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  backgroundColor: '#F2F4F7',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                disabled={isLoggingOut}
+                onPress={() => setIsLogoutModalOpen(false)}
+                activeOpacity={0.8}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#344054' }}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  backgroundColor: '#D92D20',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                disabled={isLoggingOut}
+                onPress={handleConfirmLogout}
+                activeOpacity={0.8}>
+                {isLoggingOut ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>Ya, Keluar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

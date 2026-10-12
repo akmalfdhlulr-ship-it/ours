@@ -10,8 +10,11 @@ export class OcrService {
     let imageBuffer: Buffer;
 
     if (dto.imageBase64 && dto.imageBase64.trim().length > 0) {
-      // Strip data URL scheme prefix if present
-      const cleanBase64 = dto.imageBase64.replace(/^data:image\/\w+;base64,/, '').trim();
+      // Strip data URL scheme prefix if present (supports all image mime types and charset attributes)
+      const cleanBase64 = dto.imageBase64
+        .replace(/^data:[^;]+;base64,/, '')
+        .replace(/^data:[^,]+,/, '')
+        .trim();
       try {
         imageBuffer = Buffer.from(cleanBase64, 'base64');
       } catch (err: any) {
@@ -170,7 +173,12 @@ export class OcrService {
     apiKey: string,
     model: string,
   ): Promise<OcrReceiptResultDto | null> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const activeModel =
+      model === 'gemini-3.8-flash' || !model || model.startsWith('gemini-2.0-flash')
+        ? 'gemini-2.5-flash'
+        : model;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
 
     const base64Data = imageBuffer.toString('base64');
     const systemPrompt = `You are an expert OCR and financial data extractor specialized in Indonesian restaurant bills, cafes, dining receipts, and retail receipts (struk kasir / bon kencan).
@@ -186,7 +194,7 @@ Extract all details into a clean JSON structure:
   "subCategory": "Makan & Minum",
   "items": [
     {
-      "itemName": "Nama menu / item (e.g. Latte)",
+      "name": "Nama menu / item (e.g. Latte)",
       "quantity": 1,
       "unitPrice": 45000,
       "lineTotal": 45000,
@@ -202,7 +210,7 @@ Extract all details into a clean JSON structure:
 }
 
 Strict requirements:
-1. Numbers must be pure integers or floats, no 'Rp', '.', or ',' in numerical fields.
+1. Numbers must be pure integers or floats, no 'Rp', '.', or ',' in numerical fields. Convert e.g. 45.000 to 45000.
 2. Categorize each item as 'Makanan' (food, pasta, snack, rice, meat, dessert) or 'Minuman' (coffee, tea, latte, mineral water, juice, beverage).
 3. Return ONLY raw valid JSON without markdown code fences (\`\`\`json).`;
 
@@ -240,8 +248,8 @@ Strict requirements:
         const errText = await response.text();
         const safeErr = apiKey ? errText.replace(new RegExp(apiKey, 'g'), '[REDACTED]') : errText;
 
-        if (response.status === 404 && model !== 'gemini-1.5-flash') {
-          this.logger.warn(`Model ${model} tidak dapat diakses (HTTP 404). Mencoba fallback ke gemini-1.5-flash...`);
+        if (response.status === 404 && activeModel !== 'gemini-1.5-flash') {
+          this.logger.warn(`Model ${activeModel} tidak dapat diakses (HTTP 404). Mencoba fallback ke gemini-1.5-flash...`);
           return this.callGeminiVisionModel(imageBuffer, mimeType, apiKey, 'gemini-1.5-flash');
         }
 
